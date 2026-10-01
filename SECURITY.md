@@ -33,17 +33,21 @@ Run one authoritative writer for the single V1 personality.
 
 ## Filesystem and retention
 
-The installer requires the designated root AGENTS.md and rejects symlinked state
-paths, Windows junctions, and other reparse-point entries. Archive traversal
-checks entries before descending and reports unreadable subtrees. Windows
+The installer uses the explicitly designated target directory and creates a
+minimal root AGENTS.md if missing, after configuration and history validation.
+It preserves an existing AGENTS.md and uses exclusive publication so that
+creation cannot overwrite a concurrent operator edit. Symlinked root instruction
+files and state paths, Windows junctions, and other reparse-point entries are
+rejected. Archive traversal checks entries before descending and reports
+unreadable subtrees. Windows
 drive-relative paths, reserved device names, trailing dots/spaces, alternate data
 stream syntax, and case-insensitive logical ID collisions are refused on Windows.
 New IDs/domains must be portable on every OS. Existing POSIX-only histories
 remain readable on POSIX; on Windows incompatibilities are reported, never
 silently renamed or discarded.
-It does not change AGENTS.md or CLAUDE.md. Generated runtime files contain
-absolute paths; rerun configuration after moving the checkout. Installation is
-atomic per file, not a transaction spanning all configs.
+It does not edit existing instructions or create CLAUDE.md. Generated runtime
+files contain absolute paths; rerun configuration after moving the checkout.
+Installation is atomic per file, not a transaction spanning all configs.
 
 Native Windows support initially targets **local NTFS**. Other Windows
 filesystems, network shares, synchronized directories (including cloud-backed

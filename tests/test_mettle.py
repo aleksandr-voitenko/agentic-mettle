@@ -66,11 +66,27 @@ class MettleTest(unittest.TestCase):
         self.assertFalse(self.store.path("skills").exists())
         self.assertIn("state/", (self.store.home / ".gitignore").read_text())
 
-    def test_install_requires_designated_agents(self):
+    def test_missing_root_agents_requires_installation_to_recreate_it(self):
         (self.root / "AGENTS.md").unlink()
-        with self.assertRaises(m.MettleError):
-            m.install(self.root, [])
+        with self.assertRaisesRegex(m.MettleError, "Missing root AGENTS.md"):
+            m.Store(self.root)
+        helper = self.store.home / "tools/mettle.py"
+        failed = subprocess.run([sys.executable, "-X", "utf8", str(helper), "bootstrap", "--hook"],
+                                input=b"{}", capture_output=True, timeout=30)
+        self.assertFalse(json.loads(failed.stdout)["continue"])
         self.assertFalse((self.root / "AGENTS.md").exists())
+        nested = self.root / "component"
+        nested.mkdir()
+        (nested / "AGENTS.md").write_bytes(b"# Component instructions\n")
+        configured = subprocess.run([sys.executable, "-X", "utf8", str(helper), "install", "--configure-only", "--runtimes", "claude"],
+                                    cwd=nested, capture_output=True, timeout=30)
+        self.assertEqual(configured.returncode, 0, configured.stderr)
+        self.assertTrue(json.loads(configured.stdout)["agents_created"])
+        self.assertEqual((self.root / "AGENTS.md").read_bytes(), b"# Project instructions\n")
+        self.assertEqual((nested / "AGENTS.md").read_bytes(), b"# Component instructions\n")
+        checked = subprocess.run([sys.executable, "-X", "utf8", str(helper), "check"],
+                                 cwd=nested, capture_output=True, timeout=30)
+        self.assertEqual(checked.returncode, 0, checked.stderr)
 
     def test_install_is_idempotent_and_preserves_state(self):
         self.initial()

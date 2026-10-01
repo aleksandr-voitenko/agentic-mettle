@@ -17,18 +17,25 @@ versions or silently enable disabled hooks, change trust, or grant permissions.
 
 ## Installation and root anchoring
 
-The target must already contain its designated root `AGENTS.md`. Pass that
-directory explicitly to `install`. The installer never creates or edits
-`AGENTS.md`, `CLAUDE.md`, or component instruction files. It deploys the shared
-protocol and helper into `.agent-personality/`, creates one fresh local state,
-and merges only the requested runtime configuration. Existing state is retained.
+Pass the existing target project directory explicitly to `install --root`.
+If its root `AGENTS.md` is missing, installation creates a UTF-8/LF file containing
+only `# Project instructions`, after configuration and history validation. The
+installer reports `agents_created` in its JSON result. Creation is exclusive: it
+cannot overwrite a file created by an operator during installation. Existing
+`AGENTS.md`, `CLAUDE.md`, and component instruction files are preserved byte for
+byte; no learned lessons or runtime imports are added to them. The installer
+deploys the shared protocol and helper into `.agent-personality/`, creates one
+fresh local state, and merges only the requested runtime configuration. Existing
+state is retained. It never chooses the root from cwd or component instructions.
 
 Hook launches use a validated **absolute Python executable and installed helper
 path**, with `-X utf8`. The helper
 derives its root from that fixed location, not from cwd or the nearest
-`AGENTS.md`. This works from nested component directories. It deliberately
-rejects missing root markers and redirected state paths, including Windows
-junctions and reparse points. After moving an installed target or its interpreter,
+`AGENTS.md`. This works from nested component directories. Read/bootstrap commands
+still reject missing root markers; rerun installation to recreate a missing
+scaffold (this cannot recover deleted project instructions). Installation and
+reads reject redirected state paths, including Windows junctions and reparse
+points. After moving an installed target or its interpreter,
 rerun `install --configure-only` with its new root to refresh hook commands and
 the generated LOCATION.md. Local generated hook configurations contain machine
 paths: review them before committing or sharing. Native Windows initially
@@ -41,8 +48,7 @@ with isolated UTF-8 Python and records its concrete path. A later runtime's PATH
 is irrelevant. Windows `.cmd`/`.bat` shims and `pythonw.exe` are refused. Virtual
 environments work while present, but uninstalling/moving one requires reconfiguration.
 
-From this source checkout in PowerShell, with the target's root marker already
-present (installation never creates it):
+From this source checkout in PowerShell, selecting an existing target directory:
 
 ```powershell
 $Python = 'C:\Path\To\Python311\python.exe'
@@ -276,10 +282,15 @@ NTFS targets. Each interpreter ran the same commands from the source checkout:
 
 | Python | Unit tests | Synthetic walkthrough | Compilation |
 |---|---|---|---|
-| 3.11.15 | 63 run, 59 passed, 4 skipped | Passed | Passed |
-| 3.12.14 | 63 run, 59 passed, 4 skipped | Passed | Passed |
-| 3.13.13 | 63 run, 59 passed, 4 skipped | Passed | Passed |
-| 3.13.15 (machine-wide installation) | 63 run, 59 passed, 4 skipped | Passed | Passed |
+| 3.11.15 | 68 run, 64 passed, 4 skipped | Passed | Passed |
+| 3.12.14 | 68 run, 64 passed, 4 skipped | Passed | Passed |
+| 3.13.13 | 68 run, 64 passed, 4 skipped | Passed | Passed |
+| 3.13.15 (machine-wide installation) | 68 run, 64 passed, 4 skipped | Passed | Passed |
+
+Installation coverage includes projects without a root AGENTS.md, preserving
+existing/scoped instructions, failed preflight without creating a marker,
+exclusive creation when an operator writes the file concurrently, and
+reconfiguration from a nested component after the root marker is removed.
 
 The four skips were three POSIX-only checks and Windows symlink creation denied
 with WinError 1314. Junction creation and rejection were exercised. The original

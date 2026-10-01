@@ -209,7 +209,7 @@ def validate_record(meta: dict, body: str) -> None:
 
 
 class Store:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, *, allow_missing_agents: bool = False):
         require(not (PureWindowsPath(str(root)).drive and not PureWindowsPath(str(root)).root), "Root must not be drive-relative")
         if os.name == "nt":
             validate_windows_path(root)
@@ -217,8 +217,12 @@ class Store:
         else:
             reject_redirect(root)
         self.root = root.resolve()
-        safe_path(self.root, "AGENTS.md")
-        require((self.root / "AGENTS.md").is_file(), "--root must name the designated directory containing the root AGENTS.md")
+        require(self.root.is_dir(), "--root must name an existing target directory")
+        agents = safe_path(self.root, "AGENTS.md")
+        if agents.exists():
+            require(agents.is_file(), f"Root AGENTS.md must be a regular file: {agents}")
+        else:
+            require(allow_missing_agents, f"Missing root AGENTS.md in {self.root}; run install --root with this designated directory to create it")
         self.home = safe_path(self.root, PACKAGE)
         self.state = safe_path(self.root, PACKAGE + "/state")
 
@@ -448,7 +452,9 @@ def resolve_root(value: str | None) -> Path:
         return Path(value).expanduser().absolute()
     script = Path(__file__).absolute()
     require(script.parent.name == "tools" and script.parent.parent.name == PACKAGE, "Supply --root; root discovery never guesses from the nearest AGENTS.md")
-    root = Store(script.parents[2]).root
+    # Installation can initialize a missing marker; read commands still require
+    # it when they construct their Store. Never discover a root from cwd.
+    root = Store(script.parents[2], allow_missing_agents=True).root
     safe_path(root, PACKAGE + "/tools/mettle.py")
     return root
 
@@ -537,7 +543,7 @@ def adapter(root: Path, runtime: str, executable: str | None = None) -> dict:
     if runtime == "opencode":
         return {"instructions": [f"{PACKAGE}/PERSONALITY.md", f"{PACKAGE}/LOCATION.md"]}
     require(runtime in {"codex", "claude"}, "Choose a supported runtime")
-    root = Store(root).root
+    root = Store(root, allow_missing_agents=True).root
     argv = helper_argv(root, executable or python_executable(), "bootstrap", "--runtime", runtime, "--hook")
     handler = {"type": "command", "timeout": 15}
     if runtime == "claude":
@@ -637,7 +643,7 @@ def merge_config(existing: dict, fragment: dict, runtime: str) -> dict:
 
 
 def install(root: Path, runtimes: list[str], configure_only: bool = False, python: str | None = None) -> dict:
-    store = Store(root)
+    store = Store(root, allow_missing_agents=True)
     root = store.root
     executable = python_executable(python)
     source = Path(__file__).resolve().parent
@@ -701,12 +707,21 @@ def install(root: Path, runtimes: list[str], configure_only: bool = False, pytho
         + "with --python-executable pointing to a stable Python 3.11+ executable.\n"
         + "Do not infer successful loading from this file alone. Read the command result.\n"
     )
-    # Preflight path safety; initialization never manufactures an AGENTS.md.
+    # Preflight all paths before creating the root marker or changing state.
     for folder in ("personality", "memory/lessons", "memory/episodes", "memory/reviews", "memory/reconciliations", "sessions"):
         store.path(folder)
     store.state.mkdir(parents=True, exist_ok=True)
+    agents_created = False
     with store.lock():
         records, lessons = store.snapshot()
+        agents = safe_path(root, "AGENTS.md")
+        if not agents.exists():
+            # Publish a neutral scaffold without replacing an operator's file,
+            # including one created between preflight and publication.
+            write_atomic(agents, "# Project instructions\n", exclusive=True)
+            agents_created = True
+        else:
+            require(agents.is_file(), f"Root AGENTS.md must be a regular file: {agents}")
         for path, content in files.items():
             write_atomic(path, content)
         for folder in ("personality", "memory/lessons", "memory/episodes", "memory/reviews", "memory/reconciliations", "sessions"):
@@ -719,7 +734,7 @@ def install(root: Path, runtimes: list[str], configure_only: bool = False, pytho
                 backup = path.with_name(path.name + ".mettle-backup-" + uuid.uuid4().hex[:8])
                 write_atomic(backup, path.read_bytes(), exclusive=True)
             write_atomic(path, content)
-    return {"version": VERSION, "root": str(root), "python_executable": executable, "runtimes": runtimes, "state_preserved": True, "configs": [p.relative_to(root).as_posix() for p in configs], "notice": "Review/trust hooks in each runtime. Live-agent loading has not been verified by this installer. Do not commit generated absolute-path hook configuration."}
+    return {"version": VERSION, "root": str(root), "python_executable": executable, "runtimes": runtimes, "agents_created": agents_created, "state_preserved": True, "configs": [p.relative_to(root).as_posix() for p in configs], "notice": "Review/trust hooks in each runtime. Live-agent loading has not been verified by this installer. Do not commit generated absolute-path hook configuration."}
 
 
 def bootstrap(store: Store, runtime: str, event: dict) -> str:
@@ -773,7 +788,7 @@ def parser() -> argparse.ArgumentParser:
     sub = result.add_subparsers(dest="command", required=True)
     for name in ("install", "adapter", "bootstrap", "search", "show", "publish", "check", "reindex", "template"):
         item = sub.add_parser(name)
-        item.add_argument("--root", help="Designated directory containing root AGENTS.md; installed helper resolves its fixed location")
+        item.add_argument("--root", help="Existing designated target directory; install creates root AGENTS.md if absent; installed helper resolves its fixed location")
         if name == "install":
             item.add_argument("--runtimes", nargs="*", choices=["codex", "claude", "opencode"], default=["codex", "claude", "opencode"])
             item.add_argument("--configure-only", action="store_true")
@@ -837,7 +852,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "adapter":
             require(args.runtime != "manual", "Choose a runtime")
-            root = Store(root).root
+            root = Store(root, allow_missing_agents=True).root
             fragment = adapter(root, args.runtime, python_executable(args.python_executable))
             if args.runtime == "opencode" and os.name == "nt":
                 fragment["shell"] = windows_opencode_shell({})[0]

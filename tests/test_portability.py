@@ -60,6 +60,102 @@ class PortabilityTest(unittest.TestCase):
         text = (self.store.home / "LOCATION.md").read_text(encoding="utf-8")
         return json.loads(text.split("```json\n", 1)[1].split("\n```", 1)[0]), text
 
+    def test_install_creates_root_agents_and_preserves_instructions_on_repeat(self):
+        target = self.root / "new target"
+        nested = target / "component"
+        nested.mkdir(parents=True)
+        scoped = nested / "AGENTS.md"
+        scoped.write_bytes(b"# Component rules\r\n")
+        claude = target / "CLAUDE.md"
+        claude.write_bytes(b"# Existing Claude rules\r\n")
+        source = Path(m.__file__).resolve()
+        installed = subprocess.run([sys.executable, "-X", "utf8", str(source), "install", "--root", str(target)],
+                                   cwd=nested, capture_output=True, timeout=30)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        result = json.loads(installed.stdout)
+        self.assertTrue(result["agents_created"])
+        self.assertEqual(result["root"], str(target))
+        agents = target / "AGENTS.md"
+        self.assertEqual(agents.read_bytes(), b"# Project instructions\n")
+        self.assertEqual(m.Store(target).snapshot(), ({}, {}))
+        handler = json.loads((target / ".claude/settings.local.json").read_bytes())["hooks"]["SessionStart"][0]["hooks"][0]
+        boot = subprocess.run([handler["command"], *handler["args"]], input=b'{"source":"startup"}',
+                              cwd=nested, capture_output=True, timeout=30)
+        self.assertEqual((boot.returncode, boot.stderr), (0, b""))
+        self.assertEqual(snapshot(boot.stdout)["root"], str(target))
+        customized = b"\xef\xbb\xbf" + "# Project rules\r\nKeep café 日本 intact.\r\n".encode()
+        agents.write_bytes(customized)
+        for configure_only in (False, True):
+            self.assertFalse(m.install(target, ["codex", "claude", "opencode"], configure_only)["agents_created"])
+            self.assertEqual(agents.read_bytes(), customized)
+            self.assertEqual(scoped.read_bytes(), b"# Component rules\r\n")
+            self.assertEqual(claude.read_bytes(), b"# Existing Claude rules\r\n")
+        self.assertEqual((self.root / "AGENTS.md").read_bytes(), b"# Existing root\r\n")
+        self.assertFalse((nested / m.PACKAGE).exists())
+
+    def test_missing_agents_still_requires_an_explicit_existing_target(self):
+        target = self.base / "unmarked target"
+        target.mkdir()
+        implicit = subprocess.run([sys.executable, "-X", "utf8", str(Path(m.__file__).resolve()), "install"],
+                                  cwd=target, capture_output=True, timeout=30)
+        self.assertEqual(implicit.returncode, 1)
+        self.assertIn(b"Supply --root", implicit.stderr)
+        self.assertEqual(list(target.iterdir()), [])
+        preview = subprocess.run([sys.executable, "-X", "utf8", str(Path(m.__file__).resolve()), "adapter", "--root", str(target), "--runtime", "claude"],
+                                 capture_output=True, timeout=30)
+        self.assertEqual(preview.returncode, 0, preview.stderr)
+        self.assertIn("hooks", json.loads(preview.stdout))
+        self.assertEqual(list(target.iterdir()), [])
+        missing = target / "typo"
+        with self.assertRaisesRegex(m.MettleError, "existing target directory"):
+            m.install(missing, [])
+        self.assertFalse(missing.exists())
+
+    def test_failed_preflight_does_not_create_root_agents(self):
+        for reason in ("interpreter", "config", "jsonc", "directory", "configure-only"):
+            with self.subTest(reason=reason):
+                target = self.base / reason
+                target.mkdir()
+                if reason == "config":
+                    (target / ".claude").mkdir()
+                    (target / ".claude/settings.local.json").write_bytes(b"invalid JSON")
+                elif reason == "jsonc":
+                    (target / "opencode.jsonc").write_bytes(b"{ /* keep comments */ }")
+                elif reason == "directory":
+                    (target / "AGENTS.md").mkdir()
+                before = {p.relative_to(target): p.read_bytes() if p.is_file() else None for p in target.rglob("*")}
+                with self.assertRaises((m.MettleError, ValueError)):
+                    m.install(target, ["claude", "opencode"], configure_only=reason == "configure-only",
+                              python=str(target / "missing.exe") if reason == "interpreter" else None)
+                after = {p.relative_to(target): p.read_bytes() if p.is_file() else None for p in target.rglob("*")}
+                self.assertEqual(after, before)
+
+    def test_root_agents_creation_cannot_overwrite_a_concurrent_file(self):
+        target = self.base / "unmarked target"
+        target.mkdir()
+        agents = target / "AGENTS.md"
+        original = m.write_atomic
+        def operator_creates_file(path, text, **kwargs):
+            if path == agents:
+                agents.write_bytes(b"# Operator instructions\r\n")
+            original(path, text, **kwargs)
+        with mock.patch("mettle.write_atomic", side_effect=operator_creates_file), self.assertRaises(FileExistsError):
+            m.install(target, [])
+        self.assertEqual(agents.read_bytes(), b"# Operator instructions\r\n")
+        self.assertFalse((target / m.PACKAGE / "tools/mettle.py").exists())
+        self.assertFalse((target / m.PACKAGE / "state/.write-lock").exists())
+
+    def test_invalid_history_does_not_create_missing_root_agents(self):
+        (self.root / "AGENTS.md").unlink()
+        record = self.store.path("memory/episodes/invalid.md")
+        record.write_bytes(b"Invalid accepted record\n")
+        helper_before = self.helper.read_bytes()
+        with self.assertRaisesRegex(m.MettleError, "Expected JSON metadata"):
+            m.install(self.root, [])
+        self.assertFalse((self.root / "AGENTS.md").exists())
+        self.assertEqual(record.read_bytes(), b"Invalid accepted record\n")
+        self.assertEqual(self.helper.read_bytes(), helper_before)
+
     def test_utf8_bom_crlf_and_legacy_history_preserved(self):
         draft = self.root / "draft.md"
         draft.write_bytes(b"\xef\xbb\xbf" + self.draft().replace("\n", "\r\n").encode("utf-8"))
@@ -382,10 +478,9 @@ class PortabilityTest(unittest.TestCase):
         for suffix in ("percent%PATH%", "bang!VALUE!"):
             root = self.base / suffix
             root.mkdir()
-            (root / "AGENTS.md").write_bytes(b"# Root\n")
             with self.assertRaisesRegex(m.MettleError, "cmd.exe"):
                 m.install(root, ["claude", "codex"])
-            self.assertEqual([p.name for p in root.iterdir()], ["AGENTS.md"])
+            self.assertEqual(list(root.iterdir()), [])
             # These names are safe in Claude's direct exec form.
             m.install(root, ["claude"])
             handler = json.loads((root / ".claude/settings.local.json").read_bytes())["hooks"]["SessionStart"][0]["hooks"][0]

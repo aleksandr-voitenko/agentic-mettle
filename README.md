@@ -71,9 +71,12 @@ changes lesson records, not the rules that authorize the agent.
 ## Quick start
 
 Requirements: Python **3.11+**, native Windows on **local NTFS**, macOS, or Linux,
-and a target project with an existing **root `AGENTS.md`**. Windows does not
-require WSL. No Python packages, API key, model service, or database are required
-by the helper. See [runtime versions and shell requirements](docs/integrations.md).
+and an existing target project directory. Pass that directory explicitly with
+`--root`. If its root `AGENTS.md` is missing, installation creates a minimal file
+containing only `# Project instructions`; existing instructions are preserved.
+Windows does not require WSL. No Python packages, API key, model service, or
+database are required by the helper. See
+[runtime versions and shell requirements](docs/integrations.md).
 
 Windows PowerShell **5.1 or 7**, from this source checkout (set both paths):
 
@@ -126,7 +129,7 @@ fragment for manual JSONC integration without destroying comments.
 
 ```text
 existing-project/
-├── AGENTS.md                              # Unchanged; designated root anchor
+├── AGENTS.md                              # Preserved; created if missing
 ├── .codex/hooks.json                      # Merged, review before trust
 ├── .claude/settings.local.json            # Merged
 ├── opencode.json                          # Merged when requested
