@@ -1,0 +1,316 @@
+{
+  "synthetic": true,
+  "description": "Authored record-handling fixture, not an agent transcript or a learning result. Never seed this into real personality state.",
+  "records": [
+    {
+      "metadata": {
+        "schema": 1,
+        "kind": "episode",
+        "id": "E-example-origin",
+        "title": "Synthetic generated-binding decision",
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "runtime": "synthetic",
+        "model": "none",
+        "session": "authored-example",
+        "corrects": []
+      },
+      "sections": {
+        "Observe": "The scenario starts with a direct edit to generated bindings in components/demo. Regeneration overwrites it.",
+        "Evidence": "Authored fixture only; no real agent, generator, or test was run. The hypothetical original diff is overwritten when the local generator is run.",
+        "Interpret": "A schema-first change may prevent this loss for this generator.",
+        "Uncertainty": "This scenario illustrates record structure. It is not empirical or causal evidence of learning."
+      }
+    },
+    {
+      "metadata": {
+        "schema": 1,
+        "kind": "lesson",
+        "id": "L-example-schema",
+        "title": "Schema-first changes for demo bindings",
+        "created_at": "2026-01-01T00:01:00+00:00",
+        "revision": 1,
+        "status": "proposed",
+        "domain": "engineering/generated",
+        "scope": [
+          "components/demo"
+        ],
+        "tags": [
+          "generated",
+          "schema"
+        ],
+        "aliases": [
+          "demo-generator",
+          "regeneration"
+        ],
+        "origin": [
+          "E-example-origin"
+        ],
+        "support": [],
+        "counterevidence": [],
+        "reconciliations": [],
+        "supersedes": [],
+        "superseded_by": []
+      },
+      "sections": {
+        "Trigger": "An authorized change to generated bindings in components/demo.",
+        "Practice": "Find the local schema, edit it, regenerate, inspect the output diff, and run the component checks.",
+        "Exceptions": "Read-only investigation is not authorization to edit or regenerate files. Stop before any side effect not permitted by the current request.",
+        "Expected result": "The intended change survives regeneration without unrelated losses.",
+        "Review plan": "Check a later authorized modification and a case where this procedure should not be applied.",
+        "Change rationale": "Tentative practice extracted from E-example-origin; no established personal trait is claimed."
+      }
+    },
+    {
+      "metadata": {
+        "schema": 1,
+        "kind": "episode",
+        "id": "E-example-readonly",
+        "title": "Synthetic generated-binding decision",
+        "created_at": "2026-01-01T00:02:00+00:00",
+        "runtime": "synthetic",
+        "model": "none",
+        "session": "authored-example",
+        "corrects": []
+      },
+      "sections": {
+        "Observe": "A later hypothetical request asks only for a read-only investigation. The agent retrieves L-example-schema@1, reads its boundary, and leaves files unchanged.",
+        "Evidence": "Authored fixture only; no real agent, generator, or test was run. The scenario records an inspection report and unchanged files, not a regeneration run.",
+        "Interpret": "The procedure is related but its modifying steps do not fit the current authority.",
+        "Uncertainty": "This scenario illustrates record structure. It is not empirical or causal evidence of learning."
+      }
+    },
+    {
+      "metadata": {
+        "schema": 1,
+        "kind": "review",
+        "id": "V-example-readonly",
+        "title": "Related does not mean authorized",
+        "created_at": "2026-01-01T00:03:00+00:00",
+        "lesson": "L-example-schema",
+        "lesson_revision": 1,
+        "episodes": [
+          "E-example-readonly"
+        ],
+        "assessment": "not_applied"
+      },
+      "sections": {
+        "Situation": "Current request: inspect demo schema read-only. Query term schema comes from the request; regeneration is a hint from prior context. Candidate: L-example-schema@1.",
+        "Application": "Rejected the modifying procedure after checking its read-only exception and the current request. Performed only the authorized inspection.",
+        "Outcome": "E-example-readonly records unchanged files and an inspection report in this authored scenario. There is no generator execution result.",
+        "Assessment": "Justified non-application. This checks the decision boundary, not the effectiveness of the schema-first procedure. It must not become supporting evidence."
+      }
+    },
+    {
+      "metadata": {
+        "schema": 1,
+        "kind": "episode",
+        "id": "E-example-applied",
+        "title": "Synthetic generated-binding decision",
+        "created_at": "2026-01-01T00:04:00+00:00",
+        "runtime": "synthetic",
+        "model": "none",
+        "session": "authored-example",
+        "corrects": []
+      },
+      "sections": {
+        "Observe": "A separate hypothetical task authorizes a binding change. The agent checks L-example-schema@1, edits the schema, regenerates, and inspects the diff.",
+        "Evidence": "Authored fixture only; no real agent, generator, or test was run. The authored scenario states that regeneration retains the intended field and the relevant checks pass; these are not actually executed tests.",
+        "Interpret": "The scoped practice is consistent with the successful result described by the fixture.",
+        "Uncertainty": "This scenario illustrates record structure. It is not empirical or causal evidence of learning."
+      }
+    },
+    {
+      "metadata": {
+        "schema": 1,
+        "kind": "review",
+        "id": "V-example-applied",
+        "title": "Later scoped application",
+        "created_at": "2026-01-01T00:05:00+00:00",
+        "lesson": "L-example-schema",
+        "lesson_revision": 1,
+        "episodes": [
+          "E-example-applied"
+        ],
+        "assessment": "support"
+      },
+      "sections": {
+        "Situation": "A new authorized change in components/demo; schema comes from the request. Candidate: L-example-schema@1.",
+        "Application": "Applied after checking the component, the current request, and allowed writes. Edited the source schema instead of generated output.",
+        "Outcome": "E-example-applied describes a preserved field and passing checks in the hypothetical scenario.",
+        "Assessment": "Scoped support in the example, not proof of causation or transfer to other generators. No real model behavior has been evaluated."
+      }
+    },
+    {
+      "metadata": {
+        "schema": 1,
+        "kind": "reconciliation",
+        "id": "C-example-support",
+        "title": "Link later evidence without broadening",
+        "created_at": "2026-01-01T00:06:00+00:00",
+        "operation": "LINK_EVIDENCE",
+        "inputs": [
+          "L-example-schema@1"
+        ],
+        "evidence": [
+          "V-example-applied",
+          "V-example-readonly"
+        ]
+      },
+      "sections": {
+        "Decision": "Retain the scoped practice, link the later support, and retain the read-only boundary.",
+        "Evidence assessment": "V-example-applied supports the scenario practice; V-example-readonly is not effectiveness evidence. Both remain inspectable.",
+        "Planned changes": "Publish L-example-schema@2 with active status and V-example-applied in support. No instruction-file updates."
+      }
+    },
+    {
+      "metadata": {
+        "schema": 1,
+        "kind": "lesson",
+        "id": "L-example-schema",
+        "title": "Schema-first changes for demo bindings",
+        "created_at": "2026-01-01T00:01:00+00:00",
+        "revision": 2,
+        "status": "active",
+        "domain": "engineering/generated",
+        "scope": [
+          "components/demo"
+        ],
+        "tags": [
+          "generated",
+          "schema"
+        ],
+        "aliases": [
+          "demo-generator",
+          "regeneration"
+        ],
+        "origin": [
+          "E-example-origin"
+        ],
+        "support": [
+          "V-example-applied"
+        ],
+        "counterevidence": [],
+        "reconciliations": [
+          "C-example-support"
+        ],
+        "supersedes": [],
+        "superseded_by": []
+      },
+      "sections": {
+        "Trigger": "An authorized change to generated bindings in components/demo.",
+        "Practice": "Find the local schema, edit it, regenerate, inspect the output diff, and run the component checks.",
+        "Exceptions": "Read-only investigation is not authorization to edit or regenerate files. Stop before any side effect not permitted by the current request.",
+        "Expected result": "The intended change survives regeneration without unrelated losses.",
+        "Review plan": "Check a later authorized modification and a case where this procedure should not be applied.",
+        "Change rationale": "C-example-support links a later scoped application; the original observation and applicability boundary are retained. This remains a synthetic fixture."
+      }
+    },
+    {
+      "metadata": {
+        "schema": 1,
+        "kind": "episode",
+        "id": "E-example-counter",
+        "title": "Synthetic generated-binding decision",
+        "created_at": "2026-01-01T00:08:00+00:00",
+        "runtime": "synthetic",
+        "model": "none",
+        "session": "authored-example",
+        "corrects": []
+      },
+      "sections": {
+        "Observe": "A subsequent hypothetical project change makes an external schema authoritative. Applying the old local-schema-first procedure drops a field when regenerating.",
+        "Evidence": "Authored fixture only; no real agent, generator, or test was run. The authored output diff loses a required field. This counterexample concerns L-example-schema@2 in changed conditions.",
+        "Interpret": "The practice failed to verify schema authority after the component changed. Its scope needs reconsideration.",
+        "Uncertainty": "This scenario illustrates record structure. It is not empirical or causal evidence of learning."
+      }
+    },
+    {
+      "metadata": {
+        "schema": 1,
+        "kind": "review",
+        "id": "V-example-counter",
+        "title": "A changed premise challenges the practice",
+        "created_at": "2026-01-01T00:09:00+00:00",
+        "lesson": "L-example-schema",
+        "lesson_revision": 2,
+        "episodes": [
+          "E-example-counter"
+        ],
+        "assessment": "counterexample"
+      },
+      "sections": {
+        "Situation": "Generated bindings remain in components/demo, but schema authority has moved. The agent considered L-example-schema@2 applicable without checking that premise.",
+        "Application": "Applied the old local-schema procedure under an authorized write task; authorization did not make the technical premise correct.",
+        "Outcome": "E-example-counter describes a dropped required field in the synthetic scenario.",
+        "Assessment": "Counterexample to the unqualified practice in the changed environment. Contest it and investigate authority before proposing a narrower replacement; do not erase prior support."
+      }
+    },
+    {
+      "metadata": {
+        "schema": 1,
+        "kind": "reconciliation",
+        "id": "C-example-contest",
+        "title": "Preserve contradictory evidence",
+        "created_at": "2026-01-01T00:10:00+00:00",
+        "operation": "MARK_CONTESTED",
+        "inputs": [
+          "L-example-schema@2"
+        ],
+        "evidence": [
+          "V-example-counter"
+        ]
+      },
+      "sections": {
+        "Decision": "Mark the lesson contested rather than keep applying an unchecked premise.",
+        "Evidence assessment": "Retain V-example-applied and the original event. V-example-counter changes confidence in the current scope, not the historical facts of those records.",
+        "Planned changes": "Publish L-example-schema@3 with the counterexample and contested status. Further investigation is pending; no narrower procedure has been validated."
+      }
+    },
+    {
+      "metadata": {
+        "schema": 1,
+        "kind": "lesson",
+        "id": "L-example-schema",
+        "title": "Schema-first changes for demo bindings",
+        "created_at": "2026-01-01T00:01:00+00:00",
+        "revision": 3,
+        "status": "contested",
+        "domain": "engineering/generated",
+        "scope": [
+          "components/demo"
+        ],
+        "tags": [
+          "generated",
+          "schema"
+        ],
+        "aliases": [
+          "demo-generator",
+          "regeneration"
+        ],
+        "origin": [
+          "E-example-origin"
+        ],
+        "support": [
+          "V-example-applied"
+        ],
+        "counterevidence": [
+          "V-example-counter"
+        ],
+        "reconciliations": [
+          "C-example-support",
+          "C-example-contest"
+        ],
+        "supersedes": [],
+        "superseded_by": []
+      },
+      "sections": {
+        "Trigger": "An authorized change to generated bindings in components/demo.",
+        "Practice": "Find the local schema, edit it, regenerate, inspect the output diff, and run the component checks.",
+        "Exceptions": "Read-only investigation is not authorization to edit or regenerate files. Stop before any side effect not permitted by the current request.",
+        "Expected result": "The intended change survives regeneration without unrelated losses.",
+        "Review plan": "Check a later authorized modification and a case where this procedure should not be applied.",
+        "Change rationale": "C-example-contest retains both positive and challenging evidence. Do not use this as an unconditional default while schema authority is unresolved."
+      }
+    }
+  ]
+}
