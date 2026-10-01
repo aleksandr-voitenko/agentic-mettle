@@ -136,3 +136,74 @@ A score is a lexical ranking, not confidence, truth, or measured causal utility.
 No matches is valid. Bootstrap logs character counts, not fabricated token
 counts. Record actual provider-reported tokens separately for task execution,
 retrieval context, reflection, and reconciliation; use `unknown` when unavailable.
+
+## Decision-to-review trace
+
+The following strengthens the contents of existing review sections. It does not
+add required metadata fields or change schema 1. The validator checks section
+presence, assessment type, and references; it does not verify the truth of the
+prose, authorization decisions, or a claimed causal explanation.
+
+| Existing section | What a meaningful decision review should retain |
+|---|---|
+| Situation | Current request and component; candidate ID/revision; relevant terms from the request versus prior context; why the candidate was considered. |
+| Application | Applicability and current authorization; applied, rejected, or deferred decision; observable action or deliberate non-application. |
+| Outcome | Exact artifact, test, source, or attributed feedback; what was observed and what remains unknown. |
+| Assessment | Support, counterexample, uncertainty, non-application, misapplication, or obsolescence; scope and what needs review next. |
+
+Use `assessment: not_applied` for a rejected candidate, and for a deferred
+application that did not occur. Explain the reason in Application and unresolved
+questions in Assessment. Do not classify a justified refusal to apply a procedure
+as evidence that the procedure works. In particular, its review cannot enter a
+lesson's `support` array. A candidate with no relevant later outcome stays proposed.
+
+If there were no candidates, record a meaningful retrieval miss in an episode,
+not a review with a fabricated lesson reference. Keep this selective: a routine
+successful search does not require a new record solely because a command ran.
+Do not include hidden reasoning or the entire session; retain a concise, checkable
+decision and its source evidence.
+
+Preserve exact technical terms in `title`, `tags`, and `aliases`, and explicit
+component/applicability boundaries in `scope` and the Trigger/Exceptions sections.
+Generated indexes already carry the relevant metadata; they are not independent
+sources of evidence. A procedure may include inputs, steps, stopping conditions,
+and verification within the existing Practice/Exceptions/Review plan sections.
+It remains a lesson, not a native skill registration or permission grant.
+
+The source package includes `examples/behavioral-review.json`, an entirely
+synthetic sequence of authored record metadata and body sections. Its tests
+publish a proposed lesson, record justified non-application, link later support,
+and retain a subsequent counterexample in a contested revision. Neither the
+fixture nor the tests constitute an LLM behavior experiment. The fixture is not
+copied into installed state. The runtime does not auto-dispatch its contents.
+
+## Self-model changes and reconciliation
+
+Keep a user's preferences, reusable procedures, and the agent's self-assessments
+distinct. A self-assessment needs evidence about the agent's actual behavior, not
+only knowledge of a useful method. It should identify scope, runtime/model,
+supporting and contradictory cases, uncertainty, and reconsideration conditions.
+
+Before editing a learned assessment, publish an episode whose Evidence section
+preserves the prior and proposed text plus exact supporting record/revision
+references. State the reason and uncertainty in Interpret/Uncertainty. After
+editing, publish another episode that records the observed resulting text or its
+verifiable hash and links the proposal in prose. Do not claim an intended edit
+happened before checking it. Retain both IDs in the compact current assessment.
+For a long learned-disposition section, record the complete affected assessment,
+not unrelated profile contents.
+
+This is a protocol obligation using existing episodes, not automatically versioned
+profile storage. The helper does not validate those prose references or prevent
+direct profile edits. Reconciliation must inspect them. Assigned identity and
+commitments remain operator-controlled; do not rewrite the fixed protocol to
+promote a learned habit. Revise an assessment when compensation works rather
+than maintaining a negative label solely for narrative consistency.
+
+Perform consolidation as a distinct pass over changed lessons and their linked
+evidence. The same agent can perform this role after work; V1 has no background
+consolidation service. Preserve original evidence and accepted revisions, and
+distinguish a reconciliation plan from the updates actually published. Frequency
+of retrieval is not validation, and replacing a summary or Git baseline is not
+historical preservation. Operator-authorized privacy redaction remains the
+explicit exception described above.

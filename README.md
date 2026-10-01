@@ -16,6 +16,40 @@ record validation, and offline tests. It does not establish reliable reflective
 identity across hundreds of real conversations. Live runtime integration and
 behavioral effectiveness must be evaluated in the target project.
 
+## Beyond personalization and procedural memory
+
+**Learning how to work with a user is not the same as learning about the
+agent's own behavior.** Personalization captures preferences; procedural learning
+captures reusable workflows. Both are valuable, but neither alone establishes
+a distinct, evolving self-model.
+
+Mettle's additional design target is an **evidence-backed, correctable self-model**:
+what the agent's observed actions suggest about its tendencies, strengths, and
+limitations, which adjustments helped, and where that assessment remains uncertain.
+This is not a claim of consciousness or proven long-term personality stability.
+
+For example, “use the schema-first workflow” is a procedure. “Across several
+recorded changes I edited generated output too early; a source check helped in
+later cases, but other generators remain untested” is a scoped self-assessment.
+The difference is the traceable relationship between experience, behavior, and
+revision—not the persuasiveness of an autobiographical description.
+
+## Design ideas at a glance
+
+| Idea | Immediate value | V1 form |
+|---|---|---|
+| Selective reflection | Keep meaningful successes, surprises, and corrections—not a diary of every turn. | Agent protocol; no update is valid. |
+| Lexical retrieval | Find relevant experience using exact terms, tags, and aliases. | Local keyword search; no embedding service required. |
+| Progressive disclosure | Load orientation first, then only the detail needed for a decision. | Compact map → domain index/current lesson → evidence. |
+| Task-scoped knowledge | Avoid transferring a lesson to the wrong component or situation. | Explicit scope, triggers, exceptions, and source references. |
+| Separate consolidation role | Compare evidence before revising durable guidance. | A dedicated reconciliation pass; no background worker. |
+| Procedural skill generation | Turn recurring, supported workflows into reusable steps. | Procedural lesson bodies; standalone skill packages remain outside V1. |
+
+**Retrieval discovers candidates; it does not authorize actions.** Later reviews
+must connect the exact lesson revision to an observable decision and outcome,
+including justified non-application and contradictory evidence.
+See [the design and boundaries](docs/design.md) for how these ideas fit together.
+
 ## What V1 includes
 
 - **One personality per repository:** assigned identity, dispositions, and an
@@ -126,6 +160,11 @@ counterexample reviews. **Read the full record before applying it.** A keyword
 match is not proof of relevance, a score is not confidence, and no applicable
 lesson is a valid result. Archived or superseded wording is not an active rule.
 
+Preserve distinctive source terms in lesson metadata so useful abstractions stay
+searchable. A term inferred from prior context can help discover a candidate,
+but cannot expand the current request. Check current authorization before any
+side effect; a retrieved procedure is not permission to commit, push, or deploy.
+
 ### 2. Observe and propose an adjustment
 
 An episode records observable actions, outcomes, sources, and tentative
@@ -143,7 +182,11 @@ also yield practices worth preserving.
 A review names an exact lesson revision and the episodes documenting its later
 application. It can support the practice, report a counterexample, record
 misapplication, or leave the result uncertain. Not applying an inapplicable
-lesson can be a correct decision.
+lesson can be a correct decision. Record why the candidate fit or was rejected,
+what actually changed in the agent's action, and the observable outcome. Do not
+claim a causal improvement from a single successful result or a fluent explanation.
+[The decision-to-review trace](docs/records.md#decision-to-review-trace) uses the
+existing schema; no new record kind is required.
 
 ### 4. Reconcile without erasing history
 
@@ -151,6 +194,10 @@ Use explicit ADD, REVISE, LINK_EVIDENCE, MERGE, MARK_CONTESTED, or RETIRE decisi
 Publish a new lesson revision, retaining evidence references and contradictory
 cases. Old revisions remain immutable. `current.md` and indexes are generated
 views; `reindex --repair` can rebuild them after an interrupted publication.
+A separate reconciliation pass can be performed by the same agent; it is a role
+separation, not a requirement for another model. Retain the evidence and prior
+wording behind self-model changes too. A replaceable summary or Git baseline is
+not a substitute for explicit history.
 
 There is **no background LLM worker**. The participating agent follows the
 protocol, prepares drafts, and invokes the helper. Human operators can use the
@@ -235,6 +282,10 @@ real conversations. Live Codex/Claude/OpenCode execution has not been certified.
 application, and correctability. It includes negative transfer, task-order
 sensitivity, unseen applications, model changes, and **total** token/latency
 cost including reflection and maintenance—not just fewer action steps.
+[Control other memory sources](docs/evaluation.md#control-other-memory-sources)
+so runtime-native memories, imported skills, or earlier context do not silently
+confound attribution. The synthetic [behavioral-review fixture](examples/behavioral-review.json)
+and its tests check record handling, not whether an LLM learned or obeyed a rule.
 
 ## Related projects and research
 
