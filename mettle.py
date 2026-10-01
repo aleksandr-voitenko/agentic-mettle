@@ -5,12 +5,17 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
+import fnmatch
 import hashlib
+import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import re
 import shlex
+import shutil
+import stat
+import subprocess
 import sys
 import tempfile
 import uuid
@@ -50,32 +55,78 @@ def digest(text: str) -> str:
 
 
 def read(path: Path) -> str:
-    require(path.is_file() and not path.is_symlink(), f"Missing or unsafe file: {path}")
+    reject_redirect(path)
+    require(path.is_file(), f"Missing or unsafe file: {path}")
     require(path.stat().st_size <= MAX_RECORD, f"File exceeds {MAX_RECORD} bytes: {path}")
-    return path.read_text(encoding="utf-8")
+    return path.read_text(encoding="utf-8-sig")
+
+
+def reject_redirect(path: Path) -> None:
+    """lstat works on junctions on Python 3.11 too (is_junction is 3.12+)."""
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return
+    require(not (stat.S_ISLNK(info.st_mode) or
+                 getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT),
+            f"Symlink or reparse point not permitted: {path}")
+
+
+def reject_redirect_parents(path: Path) -> None:
+    for parent in reversed(path.absolute().parents):
+        reject_redirect(parent)
+    reject_redirect(path)
+
+
+def validate_windows_path(path: Path) -> None:
+    if os.name == "nt":
+        require(not (path.drive and not path.root), f"Drive-relative path is not supported: {path}")
+        for part in path.absolute().parts[1:]:
+            portable_parts(part)
+
+
+def portable_parts(relative: str, *, windows_names: bool = True) -> tuple[str, ...]:
+    windows = PureWindowsPath(relative)
+    require(relative and not windows.drive and not windows.root and not Path(relative).is_absolute()
+            and "\\" not in relative, f"Expected a portable relative path, not a drive/root path: {relative}")
+    parts = tuple(relative.split("/"))
+    for part in parts:
+        require(part not in {"", ".", ".."}, f"Unsafe filename component: {part!r}")
+        if not windows_names:
+            continue  # Existing POSIX histories may have names Windows cannot use.
+        require(not re.search(r'[<>:"|?*\x00-\x1f]', part) and not part.endswith((".", " ")),
+                f"Unsafe filename component: {part!r}")
+        # Windows also reserves device names with extensions and superscript digits.
+        device = part.split(".", 1)[0].rstrip(" ").upper()
+        require(device not in {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
+                and not re.fullmatch(r"(?:COM|LPT)[1-9¹²³]", device),
+                f"Reserved Windows filename component: {part!r}")
+    return parts
 
 
 def safe_path(base: Path, relative: str) -> Path:
-    """Reject traversal and symlinks, including symlinked parent directories."""
-    part = Path(relative)
-    require(not part.is_absolute() and ".." not in part.parts, f"Unsafe path: {relative}")
-    target = base / part
+    """Reject traversal, Windows aliases, and redirects below the fixed root."""
+    parts = portable_parts(relative, windows_names=os.name == "nt")
+    target = base.joinpath(*parts)
     cursor = base
-    require(not base.is_symlink(), f"Symlinked root: {base}")
-    for item in part.parts:
+    reject_redirect(base)
+    for item in parts:
         cursor /= item
-        require(not cursor.is_symlink(), f"Symlink not permitted: {cursor}")
+        reject_redirect(cursor)
     require(target.resolve().is_relative_to(base.resolve()), f"Path escapes root: {relative}")
     return target
 
 
-def write_atomic(path: Path, text: str, *, exclusive: bool = False) -> None:
+def write_atomic(path: Path, text: str | bytes, *, exclusive: bool = False) -> None:
+    validate_windows_path(path)
+    reject_redirect_parents(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    require(not path.is_symlink(), f"Refusing symlink: {path}")
+    # Bytes are used only for exact configuration backups. Generated text is UTF-8/LF.
+    data = text if isinstance(text, bytes) else text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
     fd, temporary = tempfile.mkstemp(prefix=".mettle-", dir=path.parent)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            stream.write(text)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
         if exclusive:
@@ -94,6 +145,7 @@ def encode(meta: dict, body: str) -> str:
 
 def decode(text: str) -> tuple[dict, str]:
     require(len(text.encode("utf-8")) <= MAX_RECORD, "Record is too large")
+    text = text.removeprefix("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
     parts = text.split("\n---\n", 1)
     require(text.startswith("---\n") and len(parts) == 2, "Expected JSON metadata between --- delimiters")
     try:
@@ -133,6 +185,7 @@ def validate_record(meta: dict, body: str) -> None:
         require(isinstance(meta.get("status"), str) and meta["status"] in STATUSES, "Invalid lesson status")
         domain = meta.get("domain", "")
         require(isinstance(domain, str) and bool(re.fullmatch(r"[a-z0-9_-]+(?:/[a-z0-9_-]+)*", domain)), "Invalid domain")
+        portable_parts(domain, windows_names=os.name == "nt")
         for key in ("scope", "tags", "aliases", "origin", "support", "counterevidence", "reconciliations", "supersedes", "superseded_by"):
             string_list(meta, key)
         require(bool(meta["scope"]) and bool(meta["origin"]), "A lesson needs explicit scope and originating evidence")
@@ -157,6 +210,12 @@ def validate_record(meta: dict, body: str) -> None:
 
 class Store:
     def __init__(self, root: Path):
+        require(not (PureWindowsPath(str(root)).drive and not PureWindowsPath(str(root)).root), "Root must not be drive-relative")
+        if os.name == "nt":
+            validate_windows_path(root)
+            reject_redirect_parents(root)
+        else:
+            reject_redirect(root)
         self.root = root.resolve()
         safe_path(self.root, "AGENTS.md")
         require((self.root / "AGENTS.md").is_file(), "--root must name the designated directory containing the root AGENTS.md")
@@ -164,7 +223,8 @@ class Store:
         self.state = safe_path(self.root, PACKAGE + "/state")
 
     def path(self, name: str) -> Path:
-        return safe_path(self.state, name)
+        portable_parts(name, windows_names=os.name == "nt")
+        return safe_path(self.root, PACKAGE + "/state/" + name)
 
     @contextlib.contextmanager
     def lock(self):
@@ -175,7 +235,7 @@ class Store:
         except FileExistsError as exc:
             raise MettleError("Store is locked. Retry after the writer finishes; remove a stale .write-lock only after verifying no writer is running.") from exc
         try:
-            (lock / "owner.json").write_text(json.dumps({"pid": os.getpid(), "started_at": now()}), encoding="utf-8")
+            write_atomic(lock / "owner.json", json.dumps({"pid": os.getpid(), "started_at": now()}) + "\n")
             yield
         finally:
             (lock / "owner.json").unlink(missing_ok=True)
@@ -185,19 +245,32 @@ class Store:
         base = self.path(relative)
         if not base.exists():
             return []
-        # Reject all symlinks, including directory symlinks rglob would skip.
-        for directory, dirs, files in os.walk(base, followlinks=False):
+        def failed(exc: OSError) -> None:
+            raise exc  # An unreadable subtree must never look like an empty history.
+        found = []
+        # Inspect redirects before os.walk descends; do not follow with a second rglob.
+        for directory, dirs, files in os.walk(base, followlinks=False, onerror=failed):
+            names = set()
             for name in dirs + files:
-                require(not (Path(directory) / name).is_symlink(), f"Symlink in state: {Path(directory) / name}")
-        return sorted(base.rglob(pattern))
+                require(os.name != "nt" or name.casefold() not in names, f"Case-insensitive filename collision in {directory}: {name}")
+                names.add(name.casefold())
+                path = safe_path(base, (Path(directory) / name).relative_to(base).as_posix())
+                if name in files and fnmatch.fnmatchcase(name.casefold(), pattern.casefold()):
+                    found.append(path)
+        return sorted(found)
 
     def snapshot(self, *, verify_views: bool = True) -> tuple[dict, dict]:
         records: dict[str, tuple[dict, str, Path]] = {}
         lessons: dict[str, list[tuple[dict, str, Path]]] = {}
+        identifiers: dict[str, str] = {}
+        def register(identifier: str) -> None:
+            previous = identifiers.setdefault(identifier.casefold(), identifier)
+            require(os.name != "nt" or previous == identifier, f"Case-insensitive record ID collision: {previous} and {identifier}; histories were not renamed")
         for directory in DIRECTORIES.values():
             for path in self.files("memory/" + directory, "*.md"):
                 meta, body = decode(read(path))
                 validate_record(meta, body)
+                register(meta["id"])
                 require(DIRECTORIES.get(meta["kind"]) == directory, f"Record in wrong directory: {path}")
                 require(path.stem == meta["id"] and meta["id"] not in records, f"Duplicate ID or wrong filename: {path}")
                 records[meta["id"]] = (meta, body, path)
@@ -206,9 +279,10 @@ class Store:
                 continue
             meta, body = decode(read(path))
             validate_record(meta, body)
+            register(meta["id"])
             require(meta["kind"] == "lesson", f"Not a lesson revision: {path}")
             expected = self.path(f"memory/lessons/{meta['domain']}/{meta['id']}/revisions/{meta['revision']:04d}.md")
-            require(path == expected, f"Revision location does not match metadata: {path}")
+            require(path.as_posix() == expected.as_posix(), f"Revision location does not match metadata: {path}")
             lessons.setdefault(meta["id"], []).append((meta, body, path))
         for identifier, versions in lessons.items():
             versions.sort(key=lambda entry: entry[0]["revision"])
@@ -305,7 +379,7 @@ class Store:
             lines = [f"# {domain}", "", "Generated current-record index; never apply a snippet without its full record.", ""]
             for meta, folder in sorted(entries, key=lambda item: item[0]["id"]):
                 row = {key: meta[key] for key in ("id", "revision", "status", "title", "scope", "tags", "aliases")}
-                row["path"] = str((folder / "current.md").relative_to(self.root))
+                row["path"] = (folder / "current.md").relative_to(self.root).as_posix()
                 lines.append(json.dumps(row, ensure_ascii=False))
             outputs[self.path(f"memory/lessons/{domain}/INDEX.md")] = "\n".join(lines) + "\n"
         if not domains:
@@ -325,8 +399,12 @@ class Store:
         validate_record(meta, body)
         records, lessons = self.snapshot()
         identifier = meta["id"]
+        require(all(known == identifier or known.casefold() != identifier.casefold() for known in (*records, *lessons)),
+                f"Case-insensitive record ID collision: {identifier}; use the accepted ID exactly")
         if meta["kind"] == "lesson":
             versions = lessons.get(identifier, [])
+            if not versions:
+                portable_parts(meta["domain"])  # New domains are portable on all OSes.
             require(expected is not None and expected == len(versions), "Provide --expected-revision matching the accepted revision (0 for a new lesson)")
             require(meta["revision"] == expected + 1, "Incorrect next revision")
             if versions:
@@ -348,7 +426,7 @@ class Store:
         write_atomic(path, encode(meta, body), exclusive=True)
         # The immutable record is authoritative; a crash here is repaired by reindex.
         self.reindex(lessons)
-        return str(path.relative_to(self.root))
+        return path.relative_to(self.root).as_posix()
 
 
 def template(kind: str) -> str:
@@ -366,21 +444,166 @@ def template(kind: str) -> str:
 
 def resolve_root(value: str | None) -> Path:
     if value:
-        return Path(value).expanduser().resolve()
-    script = Path(__file__).resolve()
+        require(not (PureWindowsPath(value).drive and not PureWindowsPath(value).root), "--root must not be drive-relative (for example C:project)")
+        return Path(value).expanduser().absolute()
+    script = Path(__file__).absolute()
     require(script.parent.name == "tools" and script.parent.parent.name == PACKAGE, "Supply --root; root discovery never guesses from the nearest AGENTS.md")
-    return script.parents[2]
+    root = Store(script.parents[2]).root
+    safe_path(root, PACKAGE + "/tools/mettle.py")
+    return root
 
 
-def adapter(root: Path, runtime: str) -> dict:
+def python_executable(value: str | None = None) -> str:
+    """Resolve once at configuration time; hooks never depend on a future PATH."""
+    candidate = value if value is not None else sys.executable
+    require(bool(candidate), "No running Python executable; supply --python-executable")
+    require(not (PureWindowsPath(candidate).drive and not PureWindowsPath(candidate).root),
+            "--python-executable must not be drive-relative")
+    if not Path(candidate).is_file():
+        candidate = shutil.which(candidate) or candidate
+    path = Path(candidate).expanduser().absolute()
+    require(path.is_file(), f"Python executable not found: {path}")
+    if os.name == "nt":
+        require(path.suffix.lower() == ".exe" and path.stem.lower() != "pythonw",
+                "Select a console Python .exe, not a .cmd/.bat shim or pythonw.exe")
+    probe = "import json,sys; print(json.dumps({'executable':sys.executable,'version':list(sys.version_info[:3])}))"
+    try:
+        result = subprocess.run([str(path), "-I", "-X", "utf8", "-c", probe],
+                                stdin=subprocess.DEVNULL, capture_output=True, encoding="utf-8", timeout=15, check=True)
+        info = json.loads(result.stdout)
+        version = info["version"]
+        require(isinstance(version, list) and len(version) == 3 and all(type(v) is int for v in version), "Invalid Python version response")
+        require(version >= [3, 11, 0], f"Python 3.11+ required; {path} reports {'.'.join(map(str, version))}")
+        concrete = Path(info["executable"])
+        require(concrete.is_absolute() and concrete.is_file(), "Python did not report a concrete executable")
+        if os.name == "nt":
+            require(concrete.suffix.lower() == ".exe", "Python did not report a native .exe")
+        return str(concrete)
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError) as exc:
+        raise MettleError(f"Cannot validate Python executable {path}: {exc}") from exc
+
+
+def helper_argv(root: Path, executable: str, *arguments: str) -> list[str]:
+    return [executable, "-X", "utf8", str(root / PACKAGE / "tools/mettle.py"), *arguments]
+
+
+def cmd_command(argv: list[str]) -> str:
+    """For cmd.exe /C, NOT CreateProcess/CRT quoting or PowerShell syntax.
+
+    Codex supplies the outer /C quotes. Every token is quoted here; quotes,
+    expansion characters and trailing backslashes are deliberately unsupported.
+    """
+    for arg in argv:
+        require(not any(c in arg for c in '%!"\r\n\x00') and not arg.endswith("\\"),
+                f"Cannot safely generate a cmd.exe command for {arg!r}: %, !, double quotes, control newlines, or a trailing backslash are unsupported. Choose another path or exclude the CMD-based runtime.")
+    command = " ".join('"' + arg + '"' for arg in argv)
+    require(len(command.encode("utf-16-le")) // 2 <= 8000,
+            "CMD launch exceeds 8000 UTF-16 code units; shorten the interpreter or target path")
+    return command
+
+
+def shell_command(argv: list[str], shell: str) -> str:
+    if shell == "cmd":
+        return cmd_command(argv)
+    if shell == "powershell":
+        require(all(not any(c in arg for c in "\r\n\x00") for arg in argv), "PowerShell launch arguments cannot contain control newlines")
+        # PowerShell 5.1's native output decoding and input pipelines otherwise use
+        # the Windows code page. These commands are for a tool's child shell.
+        return ("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
+                "$OutputEncoding = [Console]::OutputEncoding; & "
+                + " ".join("'" + arg.replace("'", "''") + "'" for arg in argv)
+                + "; exit $LASTEXITCODE")
+    require(shell == "posix", f"Unsupported command shell: {shell}")
+    return shlex.join(argv)
+
+
+def windows_opencode_shell(existing: dict) -> tuple[str, str]:
+    """Pin the documented shell setting rather than guess OpenCode's future PATH."""
+    if "shell" not in existing:
+        configured = str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe")
+    else:
+        configured = existing["shell"]
+    require(isinstance(configured, str) and bool(configured), "OpenCode shell must be a nonempty string")
+    name = PureWindowsPath(configured).stem.lower()
+    require(name in {"pwsh", "powershell", "cmd"},
+            f"Windows OpenCode shell {configured!r} is unsupported by this installer; select powershell.exe, pwsh.exe, or cmd.exe explicitly before configuring OpenCode")
+    resolved = shutil.which(configured)
+    require(resolved is not None, f"OpenCode shell not found: {configured}")
+    require(Path(resolved).suffix.lower() == ".exe", "OpenCode's Windows shell must resolve to a native .exe, not a shell shim")
+    return str(Path(resolved).absolute()), "cmd" if name == "cmd" else "powershell"
+
+
+def adapter(root: Path, runtime: str, executable: str | None = None) -> dict:
     if runtime == "opencode":
         return {"instructions": [f"{PACKAGE}/PERSONALITY.md", f"{PACKAGE}/LOCATION.md"]}
-    command = shlex.join(["python3", str(root / PACKAGE / "tools/mettle.py"), "bootstrap", "--runtime", runtime, "--hook"])
-    handler = {"type": "command", "command": command, "timeout": 15}
+    require(runtime in {"codex", "claude"}, "Choose a supported runtime")
+    root = Store(root).root
+    argv = helper_argv(root, executable or python_executable(), "bootstrap", "--runtime", runtime, "--hook")
+    handler = {"type": "command", "timeout": 15}
+    if runtime == "claude":
+        require(all("${" not in arg for arg in argv), "Claude hook paths cannot contain ${...}: the runtime substitutes path placeholders even in exec form")
+        handler.update(command=argv[0], args=argv[1:])
+    else:
+        handler["command"] = shell_command(argv, "posix")
+        if os.name == "nt":
+            require(PureWindowsPath(os.environ.get("COMSPEC", "cmd.exe")).name.lower() == "cmd.exe",
+                    "Codex Windows hooks require COMSPEC to select cmd.exe; another hook shell needs manual configuration")
+            handler["commandWindows"] = cmd_command(argv)
     if runtime == "codex":
         handler["additionalContextLimit"] = MAX_CONTEXT + 2000
     matcher = "^(startup|resume|clear|compact" + ("|fork" if runtime == "claude" else "") + ")$"
     return {"hooks": {"SessionStart": [{"matcher": matcher, "hooks": [handler]}]}}
+
+
+def owned_argv(argv: list[str], runtime: str) -> bool:
+    if not all(isinstance(arg, str) for arg in argv) or len(argv) not in {6, 8}:
+        return False
+    executable, *args = argv
+    if args[:2] == ["-X", "utf8"]:
+        if not (Path(executable).is_absolute() or PureWindowsPath(executable).is_absolute()):
+            return False
+        args = args[2:]
+    elif not re.fullmatch(r"(?:python(?:3(?:\.\d+)?)?|pypy3)(?:\.exe)?", PureWindowsPath(executable).name, re.I):
+        # Recognize the original python3 form and equivalent manually selected
+        # Python executables, but never take ownership of an echo/wrapper command.
+        return False
+    if len(args) != 5 or args[1:] != ["bootstrap", "--runtime", runtime, "--hook"]:
+        return False
+    helper = args[0].replace("\\", "/")
+    return (helper.endswith("/" + PACKAGE + "/tools/mettle.py")
+            and (helper.startswith("/") or PureWindowsPath(helper).is_absolute())
+            and ".." not in helper.split("/"))
+
+
+def owned_command(command: str, runtime: str) -> bool:
+    # Match complete argument vectors, never a helper-path substring. This also
+    # upgrades the old shlex-generated Windows strings, including quoted paths.
+    try:
+        argv = shlex.split(command)
+        if shlex.join(argv) == command and owned_argv(argv, runtime):
+            return True
+    except ValueError:
+        pass
+    # Restricted CMD grammar: no embedded quotes, expansions, or shell operators
+    # outside quotes. Used for current commandWindows and conventional old argv.
+    token = r'(?:"[^"\r\n]*"|[^\s"&|<>^%!]+)'
+    if re.fullmatch(token + r'(?:\s+' + token + r')*', command):
+        return owned_argv([part[1:-1] if part.startswith('"') else part
+                           for part in re.findall(token, command)], runtime)
+    return False
+
+
+def owned_handler(handler: dict, runtime: str) -> bool:
+    if handler.get("type") != "command":
+        return False
+    command = handler.get("command")
+    if "args" in handler:
+        args = handler["args"]
+        return isinstance(command, str) and isinstance(args, list) and owned_argv([command, *args], runtime)
+    commands = [handler[key] for key in ("command", "commandWindows") if isinstance(handler.get(key), str)]
+    matches = [owned_command(value, runtime) for value in commands]
+    require(not any(matches) or all(matches), "Ambiguous Mettle hook: command and commandWindows have different owners; split the unrelated command into its own handler before reconfiguration")
+    return bool(matches) and all(matches)
 
 
 def merge_config(existing: dict, fragment: dict, runtime: str) -> dict:
@@ -391,6 +614,8 @@ def merge_config(existing: dict, fragment: dict, runtime: str) -> dict:
         for entry in fragment["instructions"]:
             if entry not in values:
                 values.append(entry)
+        if "shell" in fragment:
+            output.setdefault("shell", fragment["shell"])
     else:
         hooks = output.setdefault("hooks", {})
         require(isinstance(hooks, dict), "hooks must be an object")
@@ -403,22 +628,31 @@ def merge_config(existing: dict, fragment: dict, runtime: str) -> dict:
             handlers = []
             for handler in group["hooks"]:
                 require(isinstance(handler, dict), "Malformed hook handler")
-                command = handler.get("command", "")
-                owned = isinstance(command, str) and PACKAGE + "/tools/mettle.py" in command and "bootstrap" in command and f"--runtime {runtime}" in command
-                if not owned:
+                if not owned_handler(handler, runtime):
                     handlers.append(handler)
-            if handlers:
+            if handlers or not group["hooks"]:
                 kept.append({**group, "hooks": handlers})
         hooks["SessionStart"] = kept + fragment["hooks"]["SessionStart"]
     return output
 
 
-def install(root: Path, runtimes: list[str], configure_only: bool = False) -> dict:
+def install(root: Path, runtimes: list[str], configure_only: bool = False, python: str | None = None) -> dict:
     store = Store(root)
+    root = store.root
+    executable = python_executable(python)
     source = Path(__file__).resolve().parent
     require(source != store.home / "tools" or configure_only, "Use the source checkout to install/update; installed copies support --configure-only")
     targets = {"codex": ".codex/hooks.json", "claude": ".claude/settings.local.json", "opencode": "opencode.json"}
     configs: dict[Path, str] = {}
+    location_shell = "powershell" if os.name == "nt" else "posix"
+    # LOCATION is shared. Reconfiguring only Claude/Codex must not invalidate an
+    # already configured OpenCode CMD bootstrap by switching its syntax to PS.
+    if os.name == "nt" and "opencode" not in runtimes:
+        opencode_config = safe_path(root, targets["opencode"])
+        if opencode_config.exists():
+            existing = json.loads(read(opencode_config))
+            require(isinstance(existing, dict), f"Configuration must be an object: {opencode_config}")
+            _, location_shell = windows_opencode_shell(existing)
     # Preflight every configuration before changing either state or config.
     for runtime in dict.fromkeys(runtimes):
         if runtime == "opencode":
@@ -426,7 +660,12 @@ def install(root: Path, runtimes: list[str], configure_only: bool = False) -> di
         path = safe_path(root, targets[runtime])
         existing = json.loads(read(path)) if path.exists() else {}
         require(isinstance(existing, dict), f"Configuration must be an object: {path}")
-        configs[path] = json.dumps(merge_config(existing, adapter(root, runtime), runtime), indent=2) + "\n"
+        fragment = adapter(root, runtime, executable)
+        if runtime == "opencode" and os.name == "nt":
+            opencode_shell, location_shell = windows_opencode_shell(existing)
+            if "shell" not in existing:
+                fragment["shell"] = opencode_shell
+        configs[path] = json.dumps(merge_config(existing, fragment, runtime), indent=2, ensure_ascii=False) + "\n"
     files = {}
     if not configure_only:
         files = {
@@ -442,13 +681,24 @@ def install(root: Path, runtimes: list[str], configure_only: bool = False) -> di
                 files[path] = read(source / "templates" / filename)
     else:
         require(store.state.is_dir(), "Nothing installed; run install from the source checkout first")
-    command = shlex.join(["python3", str(root / PACKAGE / "tools/mettle.py"), "bootstrap", "--runtime", "opencode"])
+    argv = helper_argv(root, executable)
+    command = shell_command([*argv, "bootstrap", "--runtime", "opencode"], location_shell)
+    location = {"root": str(root), "python_executable": executable, "argv_prefix": argv, "shell": location_shell}
     files[safe_path(root, PACKAGE + "/LOCATION.md")] = (
         "# Runtime location — operator-generated, not learned memory\n\n"
-        + "Designated root containing root AGENTS.md: " + json.dumps(str(root)) + "\n\n"
+        + "Designated root containing root AGENTS.md and the selected Python launch vector:\n\n"
+        + "```json\n" + json.dumps(location, indent=2, ensure_ascii=False) + "\n```\n\n"
+        + "Prefer direct executable-plus-arguments invocation when your tool supports it.\n"
+        + "Append helper subcommands to argv_prefix; do not interpret array entries as shell text.\n\n"
         + "When no native snapshot is present, run this exact command before substantive work\n"
         + "and again after context reconstruction. It reads the current local personality.\n\n"
-        + "```sh\n" + command + "\n```\n\n"
+        + "Execution shell: **" + location_shell + "**. Use a child shell/tool invocation;\n"
+        + "the PowerShell form sets UTF-8 pipe encoding and propagates the process exit code.\n\n"
+        + "```" + {"posix": "sh", "powershell": "powershell", "cmd": "bat"}[location_shell] + "\n" + command + "\n```\n\n"
+        + "For retrieval, append `search generated bindings` or `show L-EXAMPLE` to argv_prefix.\n"
+        + "For drafts, append `template episode --output episode-draft.md`; existing files are refused.\n"
+        + "After moving the target or Python, rerun install --configure-only --root NEW_ROOT\n"
+        + "with --python-executable pointing to a stable Python 3.11+ executable.\n"
         + "Do not infer successful loading from this file alone. Read the command result.\n"
     )
     # Preflight path safety; initialization never manufactures an AGENTS.md.
@@ -456,18 +706,20 @@ def install(root: Path, runtimes: list[str], configure_only: bool = False) -> di
         store.path(folder)
     store.state.mkdir(parents=True, exist_ok=True)
     with store.lock():
+        records, lessons = store.snapshot()
         for path, content in files.items():
             write_atomic(path, content)
         for folder in ("personality", "memory/lessons", "memory/episodes", "memory/reviews", "memory/reconciliations", "sessions"):
             store.path(folder).mkdir(parents=True, exist_ok=True)
-        records, lessons = store.snapshot()
         store.reindex(lessons)
         for path, content in configs.items():
-            if path.exists() and read(path) != content:
+            if path.exists() and path.read_bytes() == content.encode("utf-8"):
+                continue
+            if path.exists():
                 backup = path.with_name(path.name + ".mettle-backup-" + uuid.uuid4().hex[:8])
-                write_atomic(backup, read(path), exclusive=True)
+                write_atomic(backup, path.read_bytes(), exclusive=True)
             write_atomic(path, content)
-    return {"version": VERSION, "root": str(root), "runtimes": runtimes, "state_preserved": True, "configs": [str(p.relative_to(root)) for p in configs], "notice": "Review/trust hooks in each runtime. Live-agent loading has not been verified by this installer. Do not commit generated absolute-path hook configuration."}
+    return {"version": VERSION, "root": str(root), "python_executable": executable, "runtimes": runtimes, "state_preserved": True, "configs": [p.relative_to(root).as_posix() for p in configs], "notice": "Review/trust hooks in each runtime. Live-agent loading has not been verified by this installer. Do not commit generated absolute-path hook configuration."}
 
 
 def bootstrap(store: Store, runtime: str, event: dict) -> str:
@@ -511,7 +763,7 @@ def search(store: Store, query: list[str], limit: int, scope: str | None) -> lis
         score = sum(3 if term in metadata else 1 for term in matched)
         if score:
             pending = [identifier for identifier, entry in records.items() if entry[0]["kind"] == "review" and entry[0]["lesson"] == meta["id"] and entry[0]["assessment"] == "counterexample" and identifier not in meta["counterevidence"]]
-            candidates.append({"pending_counterevidence": pending, "id": meta["id"], "revision": meta["revision"], "status": meta["status"], "title": meta["title"], "scope": meta["scope"], "matches": matched, "score": score, "path": str((path.parent.parent / "current.md").relative_to(store.root))})
+            candidates.append({"pending_counterevidence": pending, "id": meta["id"], "revision": meta["revision"], "status": meta["status"], "title": meta["title"], "scope": meta["scope"], "matches": matched, "score": score, "path": (path.parent.parent / "current.md").relative_to(store.root).as_posix()})
     return sorted(candidates, key=lambda item: (-item["score"], item["id"]))[:limit]
 
 
@@ -525,6 +777,8 @@ def parser() -> argparse.ArgumentParser:
         if name == "install":
             item.add_argument("--runtimes", nargs="*", choices=["codex", "claude", "opencode"], default=["codex", "claude", "opencode"])
             item.add_argument("--configure-only", action="store_true")
+        if name in {"install", "adapter"}:
+            item.add_argument("--python-executable", help="Concrete console Python 3.11+ executable; defaults to this running interpreter")
         if name in {"adapter", "bootstrap"}:
             item.add_argument("--runtime", choices=["codex", "claude", "opencode", "manual"], default="manual")
         if name == "bootstrap":
@@ -543,33 +797,63 @@ def parser() -> argparse.ArgumentParser:
             item.add_argument("--repair", action="store_true", help="Explicitly rebuild stale current views from immutable revisions")
         if name == "template":
             item.add_argument("kind", choices=list(KINDS))
+        if name in {"template", "show"}:
+            item.add_argument("--output", type=Path, help="Write UTF-8/LF directly to a new file; never overwrite")
     return result
 
 
+def configure_stdio() -> None:
+    # Do not assume replaced streams (StringIO, test captures) have a buffer,
+    # fileno, or reconfigure method. Do not replace/close the caller's streams.
+    for stream, encoding in ((sys.stdin, "utf-8-sig"), (sys.stdout, "utf-8"), (sys.stderr, "utf-8")):
+        if isinstance(stream, io.TextIOWrapper) and (stream is not sys.stdin or stream.encoding.lower() != encoding):
+            stream.reconfigure(encoding=encoding, errors="strict", newline=None if stream is sys.stdin else "\n")
+
+
+def output_text(text: str, output: Path | None) -> None:
+    if output is None:
+        print(text, end="")
+    else:
+        validate_windows_path(output)
+        reject_redirect(output)
+        target = output.absolute()
+        if os.name != "nt":
+            # Explicit draft destinations may use system aliases such as macOS
+            # /tmp -> /private/tmp. Managed state paths still reject redirects.
+            target = target.parent.resolve() / target.name
+        write_atomic(target, text, exclusive=True)
+
+
 def main(argv: list[str] | None = None) -> int:
+    configure_stdio()
     args = parser().parse_args(argv)
     try:
         if args.command == "template":
-            print(template(args.kind), end="")
+            output_text(template(args.kind), args.output)
             return 0
         root = resolve_root(args.root)
         if args.command == "install":
-            print(json.dumps(install(root, args.runtimes, args.configure_only), indent=2))
+            print(json.dumps(install(root, args.runtimes, args.configure_only, args.python_executable), indent=2))
             return 0
         if args.command == "adapter":
             require(args.runtime != "manual", "Choose a runtime")
-            print(json.dumps(adapter(root, args.runtime), indent=2))
+            root = Store(root).root
+            fragment = adapter(root, args.runtime, python_executable(args.python_executable))
+            if args.runtime == "opencode" and os.name == "nt":
+                fragment["shell"] = windows_opencode_shell({})[0]
+            print(json.dumps(fragment, indent=2))
             return 0
         store = Store(root)
         with store.lock():
             if args.command == "bootstrap":
-                event = json.loads(sys.stdin.read(64_000)) if args.hook else {}
+                event = json.loads(sys.stdin.read(64_000).removeprefix("\ufeff")) if args.hook else {}
                 require(isinstance(event, dict), "Hook input must be a JSON object")
                 require(not args.hook or event.get("hook_event_name", "SessionStart") == "SessionStart", "Expected SessionStart event")
                 text = bootstrap(store, args.runtime, event)
                 print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text}}) if args.hook else text)
             elif args.command == "publish":
-                print(store.publish(read(args.file.resolve()), args.expected_revision))
+                validate_windows_path(args.file)
+                print(store.publish(read(args.file.absolute()), args.expected_revision))
             elif args.command == "search":
                 print(json.dumps({"candidates": search(store, args.query, args.limit, args.scope), "notice": "Candidate matches are not proof of applicability. Use show to read the complete current record; no applicable lesson is a valid result."}, indent=2))
             else:
@@ -579,10 +863,10 @@ def main(argv: list[str] | None = None) -> int:
                         versions = lessons[args.id]
                         number = args.revision if args.revision is not None else len(versions)
                         require(1 <= number <= len(versions), "Unknown revision")
-                        print(encode(*versions[number - 1][:2]), end="")
+                        output_text(encode(*versions[number - 1][:2]), args.output)
                     else:
                         require(args.id in records and args.revision is None, "Unknown record or inapplicable revision")
-                        print(encode(*records[args.id][:2]), end="")
+                        output_text(encode(*records[args.id][:2]), args.output)
                 elif args.command == "reindex":
                     store.reindex(lessons)
                     print("Rebuilt derived current views and indexes; immutable evidence was not changed.")

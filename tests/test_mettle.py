@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import contextlib
+import errno
 import io
 import json
 import os
@@ -118,9 +119,10 @@ class MettleTest(unittest.TestCase):
         self.assertEqual(merged["model"], "existing")
 
     def test_opencode_locator_contains_absolute_root(self):
-        content = (self.store.home / "LOCATION.md").read_text()
-        self.assertIn(str(self.root), content)
-        self.assertIn("bootstrap --runtime opencode", content)
+        content = (self.store.home / "LOCATION.md").read_text(encoding="utf-8")
+        location = json.loads(content.split("```json\n", 1)[1].split("\n```", 1)[0])
+        self.assertEqual(location["root"], str(self.store.root))
+        self.assertEqual(location["argv_prefix"][1:3], ["-X", "utf8"])
         self.assertNotIn("state/personality", content)
 
     def test_native_hook_schema(self):
@@ -128,19 +130,24 @@ class MettleTest(unittest.TestCase):
             fragment = m.adapter(self.root, runtime)
             group = fragment["hooks"]["SessionStart"][0]
             self.assertIn("compact", group["matcher"])
-            self.assertIn(str(self.root), group["hooks"][0]["command"])
-            self.assertNotIn("AGENTS.md", group["hooks"][0]["command"])
+            handler = group["hooks"][0]
+            self.assertTrue(m.owned_handler(handler, runtime))
+            if runtime == "claude":
+                self.assertEqual(handler["args"][2], str(self.store.home / "tools/mettle.py"))
+            elif os.name == "nt":
+                self.assertIn("commandWindows", handler)
 
     def test_nested_directory_bootstrap_uses_fixed_root(self):
         nested = self.root / "components/nested"
         nested.mkdir(parents=True)
         (nested / "AGENTS.md").write_text("Wrong root\n")
         helper = self.store.home / "tools/mettle.py"
-        result = subprocess.run([sys.executable, str(helper), "bootstrap", "--runtime", "claude", "--hook"], cwd=nested, input=json.dumps({"hook_event_name": "SessionStart", "source": "compact", "session_id": "test-session"}), text=True, capture_output=True, check=True)
+        result = subprocess.run([sys.executable, "-X", "utf8", str(helper), "bootstrap", "--runtime", "claude", "--hook"], cwd=nested, input=json.dumps({"hook_event_name": "SessionStart", "source": "compact", "session_id": "test-session"}), encoding="utf-8", capture_output=True, check=True)
         data = json.loads(result.stdout)
         self.assertEqual(data["hookSpecificOutput"]["hookEventName"], "SessionStart")
         context = data["hookSpecificOutput"]["additionalContext"]
-        self.assertIn(str(self.root), context)
+        snapshot = json.loads(context.rsplit("\n\n", 1)[1])
+        self.assertEqual(snapshot["root"], str(self.store.root))
         self.assertNotIn("Wrong root", context)
         audits = list(self.store.path("sessions").glob("*.json"))
         self.assertEqual(json.loads(audits[0].read_text())["source"], "compact")
@@ -255,10 +262,14 @@ class MettleTest(unittest.TestCase):
     def test_traversal_and_symlinks_rejected(self):
         with self.assertRaises(m.MettleError):
             self.store.path("../outside")
-        if hasattr(os, "symlink"):
+        try:
             self.store.path("memory/episodes/link").symlink_to(self.root, target_is_directory=True)
-            with self.assertRaises(m.MettleError):
-                self.store.snapshot()
+        except OSError as exc:
+            if exc.errno in {errno.EPERM, errno.EACCES, errno.ENOSYS, errno.ENOTSUP} or getattr(exc, "winerror", None) == 1314:
+                self.skipTest(f"Symlink creation is unavailable to this account: {exc}")
+            raise
+        with self.assertRaises(m.MettleError):
+            self.store.snapshot()
 
     def test_nested_domains(self):
         self.publish("episode", "E-origin")

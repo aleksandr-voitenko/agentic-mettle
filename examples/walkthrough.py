@@ -21,9 +21,10 @@ def record(kind: str, identifier: str, title: str, sections: dict[str, str], **f
 
 
 def main() -> None:
+    m.configure_stdio()
     with tempfile.TemporaryDirectory(prefix="mettle-synthetic-") as temporary:
         root = Path(temporary)
-        (root / "AGENTS.md").write_text("# Synthetic example project\n", encoding="utf-8")
+        (root / "AGENTS.md").write_text("# Synthetic example project\n", encoding="utf-8", newline="\n")
         m.install(root, [])
         store = m.Store(root)
 
@@ -68,7 +69,7 @@ def main() -> None:
         with store.lock():
             print(json.dumps(m.search(store, ["generated", "bindings"], 5, None), indent=2))
         # A fresh process validates the archive, not a long-lived model's behavior.
-        subprocess.run([sys.executable, str(root / m.PACKAGE / "tools/mettle.py"), "check"], check=True)
+        subprocess.run([sys.executable, "-X", "utf8", str(root / m.PACKAGE / "tools/mettle.py"), "check"], check=True)
         assert (store.path("memory/lessons/engineering/L-schema/revisions/0001.md")).is_file()
         print("Synthetic walkthrough completed. No model was called; no real learning effectiveness was measured.")
 

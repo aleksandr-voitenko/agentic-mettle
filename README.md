@@ -70,18 +70,39 @@ changes lesson records, not the rules that authorize the agent.
 
 ## Quick start
 
-Requirements: Python **3.11+**, a macOS/Linux or WSL environment, and a target
-project with an existing **root `AGENTS.md`**. No package installation, API key,
-model service, or database is required by the helper.
+Requirements: Python **3.11+**, native Windows on **local NTFS**, macOS, or Linux,
+and a target project with an existing **root `AGENTS.md`**. Windows does not
+require WSL. No Python packages, API key, model service, or database are required
+by the helper. See [runtime versions and shell requirements](docs/integrations.md).
+
+Windows PowerShell **5.1 or 7**, from this source checkout (set both paths):
+
+```powershell
+$Python = 'C:\Path\To\Python311\python.exe'
+$Project = 'D:\path\to\existing-project'
+& $Python -X utf8 .\mettle.py install --root $Project --python-executable $Python --runtimes codex claude opencode
+$Mettle = Join-Path $Project '.agent-personality\tools\mettle.py'
+& $Python -X utf8 $Mettle check
+& $Python -X utf8 $Mettle bootstrap --runtime manual
+```
+
+Use a stable console `python.exe`, not `pythonw.exe` or a `.cmd` shim. The installer
+checks the selected executable's version; by default it uses the interpreter
+running the installer. `--python-executable` can select a different installation.
+Hooks retain that absolute executable and explicitly enable UTF-8, so Python
+does not have to be on the agent runtime's PATH. A temporary virtual environment
+or an application-managed Python cache may disappear later; choose accordingly.
+
+macOS/Linux, using a Python 3.11+ interpreter:
 
 ```sh
 git clone https://github.com/aleksandr-voitenko/agentic-mettle.git
 
-python3 agentic-mettle/mettle.py install \
+python3 -X utf8 agentic-mettle/mettle.py install \
   --root /absolute/path/to/existing-project \
   --runtimes codex claude opencode
 
-python3 /absolute/path/to/existing-project/.agent-personality/tools/mettle.py check
+python3 -X utf8 /absolute/path/to/existing-project/.agent-personality/tools/mettle.py check
 ```
 
 Use only the runtimes needed for the pilot. Installation merges JSON settings,
@@ -138,6 +159,18 @@ its own location, never from the current directory or a nearer component
 `AGENTS.md`. After moving a checkout, rerun installation with `--configure-only`
 to update absolute hook commands and `LOCATION.md`.
 
+```powershell
+$Project = 'D:\new\project-location'
+$Mettle = Join-Path $Project '.agent-personality\tools\mettle.py'
+& $Python -X utf8 $Mettle install --root $Project --configure-only --python-executable $Python --runtimes codex claude opencode
+```
+
+The source checkout and installation target are distinct. Do not manufacture an
+`AGENTS.md` in the source checkout just to install into it. Moving the source
+checkout alone does not affect an installed copy. To update its helper/protocol,
+run a normal installation from the source; `--configure-only` refreshes launches
+without upgrading the deployed helper or changing personality files.
+
 There is no independent `skills/` subsystem in V1. A lesson may describe a scoped
 procedure; `tools/` contains maintained implementation code, not autonomously
 acquired capabilities.
@@ -149,10 +182,20 @@ acquired capabilities.
 Search using the intended action, component, and likely failure mode. Repeat
 when a newly discovered subtask changes what matters—not before every tool call.
 
+PowerShell, using the installed paths from Quick start:
+
+```powershell
+& $Python -X utf8 $Mettle search generated bindings
+& $Python -X utf8 $Mettle search permissions --scope authorization
+& $Python -X utf8 $Mettle show L-example
+```
+
+macOS/Linux:
+
 ```sh
-python3 /path/to/project/.agent-personality/tools/mettle.py search generated bindings
-python3 /path/to/project/.agent-personality/tools/mettle.py search permissions --scope authorization
-python3 /path/to/project/.agent-personality/tools/mettle.py show L-example
+python3 -X utf8 /path/to/project/.agent-personality/tools/mettle.py search generated bindings
+python3 -X utf8 /path/to/project/.agent-personality/tools/mettle.py search permissions --scope authorization
+python3 -X utf8 /path/to/project/.agent-personality/tools/mettle.py show L-example
 ```
 
 Search returns candidate IDs, current revisions, status, scope, and any pending
@@ -209,19 +252,39 @@ a reflection is psychologically or causally true.
 Records use JSON metadata between `---` delimiters followed by Markdown. The
 helper intentionally does not require a YAML library or accept arbitrary YAML.
 
+In PowerShell 5.1 or 7, with `$Python` and `$Mettle` set as above:
+
+```powershell
+& $Python -X utf8 $Mettle template episode --output episode-draft.md
+# Edit the UTF-8 draft: replace every TODO with actual observations and limits.
+& $Python -X utf8 $Mettle publish episode-draft.md
+& $Python -X utf8 $Mettle template lesson --output lesson-draft.md
+# Supply its originating episode ID, scope, practice, exceptions, and review plan.
+& $Python -X utf8 $Mettle publish lesson-draft.md --expected-revision 0
+& $Python -X utf8 $Mettle check
+```
+
+`--output` writes UTF-8 without a BOM, with LF line endings, and refuses existing
+files. The stdout form remains available. Use `--output` instead of `>` or
+`Out-File` to avoid PowerShell 5.1's UTF-16 redirection default. User-edited UTF-8
+with a BOM and CRLF is accepted; arbitrary legacy encodings are not guessed.
+`show ID --output revision-draft.md` also creates a safe draft for a later revision.
+
+macOS/Linux examples (or adapt the argv prefix in installed `LOCATION.md`):
+
 ```sh
 # Generate a draft, replace all placeholders, then publish it.
-python3 /path/to/project/.agent-personality/tools/mettle.py template episode > /tmp/episode.md
-python3 /path/to/project/.agent-personality/tools/mettle.py publish /tmp/episode.md
+python3 -X utf8 /path/to/project/.agent-personality/tools/mettle.py template episode --output /tmp/episode.md
+python3 -X utf8 /path/to/project/.agent-personality/tools/mettle.py publish /tmp/episode.md
 
 # New lessons require the expected prior revision, zero for a new ID.
-python3 /path/to/project/.agent-personality/tools/mettle.py template lesson > /tmp/lesson.md
-python3 /path/to/project/.agent-personality/tools/mettle.py publish /tmp/lesson.md --expected-revision 0
+python3 -X utf8 /path/to/project/.agent-personality/tools/mettle.py template lesson --output /tmp/lesson.md
+python3 -X utf8 /path/to/project/.agent-personality/tools/mettle.py publish /tmp/lesson.md --expected-revision 0
 
 # After publishing a review and reconciliation, publish a revised lesson.
-python3 /path/to/project/.agent-personality/tools/mettle.py publish /tmp/lesson-v2.md --expected-revision 1
+python3 -X utf8 /path/to/project/.agent-personality/tools/mettle.py publish /tmp/lesson-v2.md --expected-revision 1
 
-python3 /path/to/project/.agent-personality/tools/mettle.py check
+python3 -X utf8 /path/to/project/.agent-personality/tools/mettle.py check
 ```
 
 See [the record specification](docs/records.md) for required fields, the full
@@ -229,7 +292,7 @@ publication sequence, recovery, and semantic checks. Run the isolated,
 **synthetic** worked example with:
 
 ```sh
-python3 examples/walkthrough.py
+python3 -X utf8 examples/walkthrough.py
 ```
 
 The example uses a temporary project and is never seeded into a real agent's
@@ -249,6 +312,23 @@ concurrent personalities sharing this store. Bootstrap logs record emission and
 hashes, not delivery or obedience. A hook that never runs cannot report its own
 absence.
 
+Windows support initially targets local NTFS. Network shares, other Windows
+filesystems, and synchronized folders are untested and unsupported for this
+pilot. Symlinks, junctions, reparse points, traversal, and Windows filename
+aliases are rejected in managed Windows paths. New IDs cannot differ only by
+case. Windows rejects ambiguous or nonportable archives visibly; existing
+POSIX-only histories remain readable on POSIX and are never silently renamed.
+Immutable publication still uses a fully written temporary file plus
+`os.link`; generated views use `os.replace`. Unsupported hard links or filesystem
+errors stop the operation, with no overwrite fallback. See
+[recovery and storage boundaries](SECURITY.md#filesystem-and-retention).
+
+Codex Windows hooks use CMD, even when Codex starts in PowerShell. Paths with
+`%` or `!` cannot safely be embedded in that hook form and are refused during
+preflight. Claude uses direct executable-plus-args hooks. OpenCode's Windows
+bootstrap uses an explicitly selected PowerShell or CMD shell; existing shell
+settings are preserved or an unsupported choice is reported before writing.
+
 State stays local but is sent to the configured model provider when an agent
 reads it. Do not store secrets or unnecessary personal information. `.gitignore`
 is not encryption, access control, synchronization, or backup. Review generated
@@ -267,16 +347,32 @@ differently; record model/runtime provenance and evaluate changes.
 
 ## Evaluation and development
 
-```sh
-python3 -m unittest discover -s tests -v
-python3 examples/walkthrough.py
-python3 -m py_compile mettle.py examples/walkthrough.py
+PowerShell, using a Python 3.11+ executable:
+
+```powershell
+& $Python -X utf8 -m unittest discover -s tests -v
+& $Python -X utf8 examples/walkthrough.py
+& $Python -X utf8 -m py_compile mettle.py examples/walkthrough.py
 ```
 
-The offline suite checks installation safety, nested-root resolution, native
-hook payloads, immutable records, references, revision conflicts, counterevidence,
-recovery, and fresh-process persistence. Synthetic archives are not hundreds of
-real conversations. Live Codex/Claude/OpenCode execution has not been certified.
+macOS/Linux:
+
+```sh
+python3 -X utf8 -m unittest discover -s tests -v
+python3 -X utf8 examples/walkthrough.py
+python3 -X utf8 -m py_compile mettle.py examples/walkthrough.py
+```
+
+The offline suite checks installation and upgrade safety, relocated/nested-root
+resolution, UTF-8 pipes/files, generated hook launches, immutable records,
+references, revision conflicts, counterevidence, recovery, junction rejection,
+and fresh-process persistence. Windows tests execute CMD, available PowerShell
+5.1/7 shells, and direct process launches with unusual paths. Symlink tests first
+attempt creation and report unavailable privileges as a skip. CI retains Linux
+and runs Windows with Python 3.11, 3.12, and 3.13. Configuring that matrix is not
+evidence its jobs passed. Synthetic archives are not hundreds of real
+conversations; see [integration verification](docs/integrations.md) for the
+distinction between process tests and live runtime loading.
 
 [The evaluation plan](docs/evaluation.md) separates storage, loading, retrieval,
 application, and correctability. It includes negative transfer, task-order
