@@ -17,16 +17,29 @@ versions or silently enable disabled hooks, change trust, or grant permissions.
 
 ## Installation and root anchoring
 
-Pass the existing target project directory explicitly to `install --root`.
-If its root `AGENTS.md` is missing, installation creates a UTF-8/LF file containing
-only `# Project instructions`, after configuration and history validation. The
-installer reports `agents_created` in its JSON result. Creation is exclusive: it
-cannot overwrite a file created by an operator during installation. Existing
-`AGENTS.md`, `CLAUDE.md`, and component instruction files are preserved byte for
-byte; no learned lessons or runtime imports are added to them. The installer
-deploys the shared protocol and helper into `.agent-personality/`, creates one
-fresh local state, and merges only the requested runtime configuration. Existing
-state is retained. It never chooses the root from cwd or component instructions.
+Use [guided setup or its equivalent CLI flags](installer.md) to choose the
+existing target root, adapters, activation placement, and starting profiles.
+A terminal installation previews all changes and asks for confirmation; use
+`--non-interactive` for scripts and `--dry-run` for a no-write plan.
+
+The CLI defaults to appending one managed Agentic Mettle activation block to
+root `AGENTS.md`; prepend and skip are explicit alternatives. A missing root file
+is created. Only the marked block is managed: unrelated content, BOM/newline
+style, `CLAUDE.md`, and component instruction files are preserved. This static
+operator-directed activation is not learned-lesson promotion. The root is never
+inferred from a component's instructions.
+
+Package assets and selected native adapters are installed alongside the block.
+Existing personality files are kept unless explicitly selected for replacement
+and confirmed; self-model and accepted memories are never reset. Empty runtime
+selection means no adapter updates, not removal of existing adapters. The direct
+Python `install()` API retains its historical `agents_position="skip"` default;
+the documented CLI/wizard defaults to append or the saved selection.
+
+Start a new session or use the runtime's supported instruction reload after
+installation. A root block and native hooks provide complementary loading paths;
+a current snapshot should not be loaded twice. A block on disk cannot force a
+running agent to reload instructions or bypass hook trust. Verify actual loading.
 
 Hook launches use a validated **absolute Python executable and installed helper
 path**, with `-X utf8`. The helper
@@ -68,6 +81,10 @@ After moving the target, update `$Project` and `$Mettle`, then run:
 installation from the updated source first when upgrading the helper itself.
 Moving the source checkout alone does not affect already deployed helpers.
 
+The installer validates the complete plan, existing record graph, and startup
+context budget before writing. It rechecks planned inputs after confirmation
+and reports detected conflicts rather than applying an obsolete preview. Changed
+existing files receive exact backups; unchanged files are not rewritten.
 The installer preflights JSON and keeps backups of changed config files. Repeated
 installation matches complete Mettle argument vectors, upgrades the earlier
 `python3`/POSIX-quoted format (including its Windows paths), and replaces the
@@ -316,6 +333,8 @@ live-verified. Their version baselines above describe documentation/source
 inspection, not installed runtime tests. No trust, hook approval, or execution
 policy was bypassed.
 
-The Linux/Windows GitHub Actions matrix was updated but its jobs were not run as
-part of this local validation. macOS/Linux process behavior, non-NTFS Windows
-storage, network shares, and synchronized directories were not exercised here.
+This is the historical validation record for the native Windows portability
+change, not a claim that every later installer change ran on that workstation.
+Use the current PR's CI results for subsequent Linux/Windows test outcomes.
+macOS runtime behavior, non-NTFS Windows storage, network shares, and synchronized
+directories remain outside that validation.

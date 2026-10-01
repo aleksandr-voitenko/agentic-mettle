@@ -69,14 +69,17 @@ class PortabilityTest(unittest.TestCase):
         claude = target / "CLAUDE.md"
         claude.write_bytes(b"# Existing Claude rules\r\n")
         source = Path(m.__file__).resolve()
-        installed = subprocess.run([sys.executable, "-X", "utf8", str(source), "install", "--root", str(target)],
+        installed = subprocess.run([sys.executable, "-X", "utf8", str(source), "install", "--root", str(target),
+                                    "--non-interactive", "--runtimes", "codex", "claude", "opencode"],
                                    cwd=nested, capture_output=True, timeout=30)
         self.assertEqual(installed.returncode, 0, installed.stderr)
         result = json.loads(installed.stdout)
         self.assertTrue(result["agents_created"])
         self.assertEqual(result["root"], str(target))
         agents = target / "AGENTS.md"
-        self.assertEqual(agents.read_bytes(), b"# Project instructions\n")
+        self.assertTrue(agents.read_bytes().startswith(b"# Project instructions\n"))
+        self.assertEqual(agents.read_bytes().count(b"<!-- agentic-mettle:begin -->"), 1)
+        self.assertIn(b".agent-personality/PERSONALITY.md", agents.read_bytes())
         self.assertEqual(m.Store(target).snapshot(), ({}, {}))
         handler = json.loads((target / ".claude/settings.local.json").read_bytes())["hooks"]["SessionStart"][0]["hooks"][0]
         boot = subprocess.run([handler["command"], *handler["args"]], input=b'{"source":"startup"}',

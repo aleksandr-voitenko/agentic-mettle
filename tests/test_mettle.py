@@ -78,11 +78,14 @@ class MettleTest(unittest.TestCase):
         nested = self.root / "component"
         nested.mkdir()
         (nested / "AGENTS.md").write_bytes(b"# Component instructions\n")
-        configured = subprocess.run([sys.executable, "-X", "utf8", str(helper), "install", "--configure-only", "--runtimes", "claude"],
+        configured = subprocess.run([sys.executable, "-X", "utf8", str(helper), "install", "--configure-only", "--non-interactive", "--runtimes", "claude"],
                                     cwd=nested, capture_output=True, timeout=30)
         self.assertEqual(configured.returncode, 0, configured.stderr)
         self.assertTrue(json.loads(configured.stdout)["agents_created"])
-        self.assertEqual((self.root / "AGENTS.md").read_bytes(), b"# Project instructions\n")
+        root_instructions = (self.root / "AGENTS.md").read_bytes()
+        self.assertTrue(root_instructions.startswith(b"# Project instructions\n"))
+        self.assertEqual(root_instructions.count(b"<!-- agentic-mettle:begin -->"), 1)
+        self.assertIn(b".agent-personality/PERSONALITY.md", root_instructions)
         self.assertEqual((nested / "AGENTS.md").read_bytes(), b"# Component instructions\n")
         checked = subprocess.run([sys.executable, "-X", "utf8", str(helper), "check"],
                                  cwd=nested, capture_output=True, timeout=30)
@@ -98,7 +101,7 @@ class MettleTest(unittest.TestCase):
         for name in (".codex/hooks.json", ".claude/settings.local.json"):
             groups = json.loads((self.root / name).read_text())["hooks"]["SessionStart"]
             self.assertEqual(len(groups), 1)
-        self.assertEqual(len(self.store.snapshot()[1]), 1)
+        self.assertEqual(self.store.snapshot()[1].__len__(), 1)
 
     def test_preserve_unrelated_config_handlers(self):
         target = self.root / ".claude/settings.local.json"

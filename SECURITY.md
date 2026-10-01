@@ -34,9 +34,13 @@ Run one authoritative writer for the single V1 personality.
 ## Filesystem and retention
 
 The installer uses the explicitly designated target directory and creates a
-minimal root AGENTS.md if missing, after configuration and history validation.
-It preserves an existing AGENTS.md and uses exclusive publication so that
-creation cannot overwrite a concurrent operator edit. Symlinked root instruction
+root AGENTS.md if missing, after configuration and history validation.
+The CLI/wizard can prepend or append one marked, static activation block; skip
+leaves an existing file unchanged. Unrelated instructions are preserved and
+changed files are backed up byte for byte. Malformed markers or detected
+intervening edits fail visibly. Exclusive creation cannot overwrite a concurrent
+operator file. This operator-approved setup is not learned-lesson promotion.
+Symlinked root instruction
 files and state paths, Windows junctions, and other reparse-point entries are
 rejected. Archive traversal checks entries before descending and reports
 unreadable subtrees. Windows
@@ -45,7 +49,8 @@ stream syntax, and case-insensitive logical ID collisions are refused on Windows
 New IDs/domains must be portable on every OS. Existing POSIX-only histories
 remain readable on POSIX; on Windows incompatibilities are reported, never
 silently renamed or discarded.
-It does not edit existing instructions or create CLAUDE.md. Generated runtime
+It does not modify instructions outside the managed root block, create CLAUDE.md,
+or edit component instruction files. Generated runtime
 files contain absolute paths; rerun configuration after moving the checkout.
 Installation is atomic per file, not a transaction spanning all configs.
 
@@ -77,6 +82,27 @@ Append-only means normal historical preservation, not a denial of authorized
 erasure. V1 has no automated erasure command. An operator can redact sensitive
 material and leave non-sensitive tombstones explaining affected references,
 then run validation. Do not publish private evidence in bug reports.
+
+## Setup previews and profile replacement
+
+Interactive setup asks for confirmation after showing the plan. A dry run and
+pre-confirmation cancellation write nothing to the target. Non-interactive mode
+uses explicit flags and documented defaults; it does not bypass validation or
+trust. Presets define operator-assigned starting preferences, not demonstrated
+skills, learned behavior, or expanded authority.
+
+Existing profiles are preserved by default. Replacing a selected identity or
+dispositions file requires explicit approval and keeps its exact prior bytes in
+a backup. Replacement affects the entire selected file, including learned content;
+review the preview first. Self-model and accepted history are never reset. Custom
+profile content is shown in previews/JSON: avoid secrets and protect terminal logs
+and backups. Installer choices are saved locally, separately from learned evidence.
+
+Plan hashes and cooperating-reader locks detect changes during normal setup;
+they do not make external edits transactional or provide an adversarial race
+barrier. An interrupted apply can leave a partial installation: inspect it and
+its backups before retrying. There is no automatic rollback, uninstall, backup
+pruning, or restore command. See [the installer guide](docs/installer.md).
 
 ## Recovery and reports
 
