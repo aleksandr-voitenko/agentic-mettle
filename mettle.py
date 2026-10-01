@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import datetime as dt
 import fnmatch
@@ -496,7 +497,7 @@ def helper_argv(root: Path, executable: str, *arguments: str) -> list[str]:
 def cmd_command(argv: list[str]) -> str:
     """For cmd.exe /C, NOT CreateProcess/CRT quoting or PowerShell syntax.
 
-    Codex supplies the outer /C quotes. Every token is quoted here; quotes,
+    The caller must supply the outer /C quotes. Every token is quoted here; quotes,
     expansion characters and trailing backslashes are deliberately unsupported.
     """
     for arg in argv:
@@ -513,14 +514,36 @@ def shell_command(argv: list[str], shell: str) -> str:
         return cmd_command(argv)
     if shell == "powershell":
         require(all(not any(c in arg for c in "\r\n\x00") for arg in argv), "PowerShell launch arguments cannot contain control newlines")
+        quoted = ["'" + arg.replace("'", "''") + "'" for arg in argv]
         # PowerShell 5.1's native output decoding and input pipelines otherwise use
         # the Windows code page. These commands are for a tool's child shell.
+        # The call operator resolves executable paths as wildcard patterns even
+        # inside single quotes; escape brackets/backticks at that separate layer.
         return ("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
                 "$OutputEncoding = [Console]::OutputEncoding; & "
-                + " ".join("'" + arg.replace("'", "''") + "'" for arg in argv)
+                "([System.Management.Automation.WildcardPattern]::Escape(" + quoted[0] + ")) "
+                + " ".join(quoted[1:])
                 + "; exit $LASTEXITCODE")
     require(shell == "posix", f"Unsupported command shell: {shell}")
     return shlex.join(argv)
+
+
+def codex_windows_command(argv: list[str], powershell: str) -> str:
+    """One command for Codex's session PowerShell or its CMD fallback.
+
+    Only a bare system executable and base64 reach the outer shell. Encoding the
+    existing PowerShell invocation keeps project/Python paths out of both shell
+    parsers. CMD /C executes the first line; PowerShell also executes the second
+    line to retain the native exit code instead of mapping all failures to 1.
+    """
+    require(re.fullmatch(r"[A-Za-z]:\\[A-Za-z0-9_.\\-]+", powershell) is not None
+            and PureWindowsPath(powershell).name.lower() == "powershell.exe",
+            "Codex Windows hooks require a Windows PowerShell system path without spaces or shell metacharacters")
+    script = "$ErrorActionPreference = 'Stop'; " + shell_command(argv, "powershell")
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    command = f"{powershell} -NoLogo -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand {encoded}\nexit $LASTEXITCODE"
+    require(len(command) <= 8000, "Codex Windows launch exceeds 8000 characters; shorten the interpreter or target path")
+    return command
 
 
 def windows_opencode_shell(existing: dict) -> tuple[str, str]:
@@ -552,9 +575,9 @@ def adapter(root: Path, runtime: str, executable: str | None = None) -> dict:
     else:
         handler["command"] = shell_command(argv, "posix")
         if os.name == "nt":
-            require(PureWindowsPath(os.environ.get("COMSPEC", "cmd.exe")).name.lower() == "cmd.exe",
-                    "Codex Windows hooks require COMSPEC to select cmd.exe; another hook shell needs manual configuration")
-            handler["commandWindows"] = cmd_command(argv)
+            powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+            require(powershell.is_file(), f"Windows PowerShell not found: {powershell}")
+            handler["commandWindows"] = codex_windows_command(argv, str(powershell))
     if runtime == "codex":
         handler["additionalContextLimit"] = MAX_CONTEXT + 2000
     matcher = "^(startup|resume|clear|compact" + ("|fork" if runtime == "claude" else "") + ")$"
@@ -582,6 +605,29 @@ def owned_argv(argv: list[str], runtime: str) -> bool:
 
 
 def owned_command(command: str, runtime: str) -> bool:
+    # Decode only our exact launcher grammar, never evaluate shell text. Verify
+    # the entire inner command and regenerate the wrapper before taking ownership.
+    wrapped = re.fullmatch(r"([^\s]+) -NoLogo -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand ([A-Za-z0-9+/=]+)\nexit \$LASTEXITCODE", command)
+    inner = command
+    if wrapped:
+        try:
+            inner = base64.b64decode(wrapped[2], validate=True).decode("utf-16-le")
+            prefix = "$ErrorActionPreference = 'Stop'; "
+            if not inner.startswith(prefix):
+                return False
+            inner = inner[len(prefix):]
+        except (ValueError, UnicodeError):
+            return False
+    token = r"'(?:[^'\r\n\x00]|'')*'"
+    if inner.startswith("[Console]::OutputEncoding = "):
+        argv = [part[1:-1].replace("''", "'") for part in re.findall(token, inner)]
+        try:
+            if owned_argv(argv, runtime) and shell_command(argv, "powershell") == inner:
+                return not wrapped or codex_windows_command(argv, wrapped[1]) == command
+        except MettleError:
+            return False
+    if wrapped:
+        return False
     # Match complete argument vectors, never a helper-path substring. This also
     # upgrades the old shlex-generated Windows strings, including quoted paths.
     try:
@@ -591,7 +637,7 @@ def owned_command(command: str, runtime: str) -> bool:
     except ValueError:
         pass
     # Restricted CMD grammar: no embedded quotes, expansions, or shell operators
-    # outside quotes. Used for current commandWindows and conventional old argv.
+    # outside quotes. Used for the old commandWindows and conventional old argv.
     token = r'(?:"[^"\r\n]*"|[^\s"&|<>^%!]+)'
     if re.fullmatch(token + r'(?:\s+' + token + r')*', command):
         return owned_argv([part[1:-1] if part.startswith('"') else part

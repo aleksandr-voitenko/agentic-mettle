@@ -362,11 +362,13 @@ Immutable publication still uses a fully written temporary file plus
 errors stop the operation, with no overwrite fallback. See
 [recovery and storage boundaries](SECURITY.md#filesystem-and-retention).
 
-Codex Windows hooks use CMD, even when Codex starts in PowerShell. Paths with
-`%` or `!` cannot safely be embedded in that hook form and are refused during
-preflight. Claude uses direct executable-plus-args hooks. OpenCode's Windows
+Codex Windows hooks can use the session's PowerShell or fall back to CMD. The
+generated command supports both through the built-in Windows PowerShell launcher,
+with encoded arguments and literal executable paths; `%` and `!` are supported.
+Claude uses direct executable-plus-args hooks. OpenCode's Windows
 bootstrap uses an explicitly selected PowerShell or CMD shell; existing shell
 settings are preserved or an unsupported choice is reported before writing.
+OpenCode's CMD form still rejects paths containing `%` or `!` during preflight.
 
 State stays local but is sent to the configured model provider when an agent
 reads it. Do not store secrets or unnecessary personal information. `.gitignore`
