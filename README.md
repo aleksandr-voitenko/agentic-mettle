@@ -52,6 +52,9 @@ See [the design and boundaries](docs/design.md) for how these ideas fit together
 
 ## What V1 includes
 
+- **Guided installation:** preview changes, choose a role and working style, and
+  enable the protocol through a managed root `AGENTS.md` block; equivalent flags
+  support unattended setup.
 - **One personality per repository:** assigned identity, dispositions, and an
   evidence-linked, revisable self-model. No per-agent-ID subdirectory.
 - **Observe → Interpret → Adjust → Review:** later application supplies evidence
@@ -64,82 +67,124 @@ See [the design and boundaries](docs/design.md) for how these ideas fit together
   than repeated whole-history rewrites. No automatic model calls or embeddings.
 
 **V1 never promotes learned lessons into `AGENTS.md`, `CLAUDE.md`,
-`PERSONALITY.md`, or runtime instruction configuration.** Installation leaves
-existing project and component instruction files unchanged. Reconciliation
-changes lesson records, not the rules that authorize the agent.
+`PERSONALITY.md`, or runtime instruction configuration.** An operator-approved
+installer block can enable the fixed protocol in root `AGENTS.md`; it contains
+no learned lessons. Other root instructions, `CLAUDE.md`, and component instruction
+files are preserved. Reconciliation does not change this activation block.
 
 ## Quick start
 
 Requirements: Python **3.11+**, native Windows on **local NTFS**, macOS, or Linux,
-and an existing target project directory. Pass that directory explicitly with
-`--root`. If its root `AGENTS.md` is missing, installation creates a minimal file
-containing only `# Project instructions`; existing instructions are preserved.
-Windows does not require WSL. No Python packages, API key, model service, or
-database are required by the helper. See
-[runtime versions and shell requirements](docs/integrations.md).
+and an existing target project directory. No Python packages, API keys, model
+service, or database are required by the helper. The source checkout and target
+project are separate; there is no need to prepare an `AGENTS.md` manually.
 
-Windows PowerShell **5.1 or 7**, from this source checkout (set both paths):
+### Guided installation
+
+From this source checkout in Windows PowerShell **5.1 or 7**:
 
 ```powershell
 $Python = 'C:\Path\To\Python311\python.exe'
 $Project = 'D:\path\to\existing-project'
-& $Python -X utf8 .\mettle.py install --root $Project --python-executable $Python --runtimes codex claude opencode
+& $Python -X utf8 .\mettle.py install --root $Project
 $Mettle = Join-Path $Project '.agent-personality\tools\mettle.py'
 & $Python -X utf8 $Mettle check
-& $Python -X utf8 $Mettle bootstrap --runtime manual
 ```
 
-Use a stable console `python.exe`, not `pythonw.exe` or a `.cmd` shim. The installer
-checks the selected executable's version; by default it uses the interpreter
-running the installer. `--python-executable` can select a different installation.
-Hooks retain that absolute executable and explicitly enable UTF-8, so Python
-does not have to be on the agent runtime's PATH. A temporary virtual environment
-or an application-managed Python cache may disappear later; choose accordingly.
-
-macOS/Linux, using a Python 3.11+ interpreter:
+macOS/Linux:
 
 ```sh
 git clone https://github.com/aleksandr-voitenko/agentic-mettle.git
-
-python3 -X utf8 agentic-mettle/mettle.py install \
-  --root /absolute/path/to/existing-project \
-  --runtimes codex claude opencode
-
-python3 -X utf8 /absolute/path/to/existing-project/.agent-personality/tools/mettle.py check
+python3 -X utf8 agentic-mettle/mettle.py install --root /path/to/existing-project
 ```
 
-Use only the runtimes needed for the pilot. Installation merges JSON settings,
-backs up changed configurations, and retains existing personality state. Review
-its output and the resulting commands **before enabling/trusting hooks** in the
-runtimes. Generated hook commands contain absolute machine-local paths.
+In a terminal, setup asks which runtime adapters to configure, where to place the
+activation block, and which identity and disposition to start with. You can
+customize a preset or supply your own UTF-8 profile files. Existing profiles are
+kept by default. **The final preview shows the changes, generated profile text,
+and warnings before asking for confirmation.** Cancellation before confirmation
+writes nothing to the target. Use `--interactive` to request the wizard explicitly.
 
-Edit the initial `state/personality/identity.md` and `dispositions.md` as the
-operator. The initial self-model deliberately contains no invented history.
-Then verify a fresh session, resume, and compaction using the
-[integration checklist](docs/integrations.md). Configuration present on disk is
-not proof that a runtime executed a hook or delivered its output to the model.
+Select a stable Python interpreter; the running interpreter is the default.
+`--python-executable` chooses another validated installation. Existing Windows
+quoting, UTF-8 handling, and fixed-root resolution remain in effect.
 
-OpenCode uses the loaded protocol to request a bootstrap tool call; its adapter
-is **not equivalent to a verified native post-compaction hook**. When an existing
-`opencode.jsonc` is detected, installation stops before changing files. Install
-other runtimes separately and use `adapter --runtime opencode` to obtain a
-fragment for manual JSONC integration without destroying comments.
+### Meaningful starting choices
+
+| Profile | Choices |
+|---|---|
+| Identity | `collaborator` for implementation; `reviewer` for evidence-based review; `maintainer` for compatibility and recovery; `researcher` for hypotheses and experiments. |
+| Dispositions | `balanced`, `deliberate`, or `exploratory`, each with explicit behavioral wording. |
+| Constructor overrides | Optional name, role, and project focus; communication, initiative, verification, and disagreement preferences. |
+
+These are **operator-assigned starting preferences**, not fabricated skills,
+memories, achievements, or personality-test results. They do not grant additional
+permissions. The self-model starts without invented evidence. Print the full
+catalog with `python mettle.py presets`; see [profile examples and all flags](docs/installer.md).
+
+### Unattended installation and preview
+
+Every choice has a CLI equivalent. For example, in PowerShell:
+
+```powershell
+& $Python -X utf8 .\mettle.py install --root $Project --non-interactive --runtimes codex claude --agents-position append --identity-preset maintainer --agent-name Aster --disposition-preset balanced --verification thorough
+```
+
+Add **`--dry-run`** to validate and print the plan without creating or modifying
+target files. `--non-interactive` (alias `--yes`) never prompts. Without a terminal,
+setup also runs non-interactively; supply explicit flags for reproducible scripts.
+New installations default to append, collaborator, and balanced. Runtime choices
+default to saved selections or detected executables/existing Mettle adapters.
+An empty `--runtimes` configures none; it does **not** remove existing adapters.
+
+### Activation and safe upgrades
+
+Choose `--agents-position append` or `prepend`. Setup adds or replaces exactly
+one marked block linking the fixed protocol and bootstrap location. It preserves
+unrelated instruction bytes, UTF-8 BOMs, and the original newline style, with
+minimal separating whitespace. A missing root file gets a small scaffold plus
+the block. `--agents-position skip` leaves an existing file unchanged (including
+any existing block), or creates only a neutral root marker. It is not uninstall.
+
+The block is a loading instruction, **not a permissions override or guaranteed
+runtime hook invocation**. Review/approve native hooks, then start a new session
+or reload instructions through the runtime. Existing sessions may cache previous
+instructions. The installer never bypasses trust or edits `CLAUDE.md` or scoped
+component files. OpenCode's instruction-triggered bootstrap still has the
+[documented limitations](docs/integrations.md).
+
+Reinstalling without profile flags preserves identity, dispositions, self-model,
+and experience history. Repeating identical explicit profile choices is a no-op.
+Changing an existing profile requires **`--replace-profiles`** or explicit wizard
+approval; only selected profiles are replaced, with exact backups. The entire
+selected profile, including any learned content, is replaced: review the preview.
+Self-model and accepted history are never reset. Placement and adapter selections
+are remembered locally for later runs.
+
+Changed existing files have exact backups; unchanged files are not rewritten.
+Malformed block markers, invalid profiles/configuration, conflicting edits, and
+oversized startup context stop installation visibly. Publication is atomic per
+file, not an all-or-nothing transaction. See [the installer guide](docs/installer.md)
+for recovery and the distinction between preflight and live verification.
 
 ### Installed structure
 
 ```text
 existing-project/
-├── AGENTS.md                              # Preserved; created if missing
-├── .codex/hooks.json                      # Merged, review before trust
-├── .claude/settings.local.json            # Merged
-├── opencode.json                          # Merged when requested
+├── AGENTS.md                              # Managed activation block or explicit skip
+├── .codex/hooks.json                      # Merged when selected; review/trust
+├── .claude/settings.local.json            # Merged when selected
+├── opencode.json                          # Merged when selected
 └── .agent-personality/
     ├── PERSONALITY.md                     # Fixed protocol
     ├── LOCATION.md                        # Generated root/bootstrap location
     ├── REFERENCE.md                       # Record schema and workflow
-    ├── tools/mettle.py                    # Installed helper
+    ├── tools/
+    │   ├── mettle.py                      # Core helper
+    │   └── mettle_installer.py            # Guided setup and profile constructors
     ├── .gitignore                         # Excludes mutable state
     └── state/
+        ├── installation.json             # Local placement/adapter choices
         ├── personality/
         │   ├── identity.md
         │   ├── dispositions.md
@@ -156,27 +201,18 @@ existing-project/
         └── sessions/
 ```
 
-Subdirectories are supported, including nested lesson domains. A lesson has one
-canonical location and stable ID. The installed helper derives its root from
-its own location, never from the current directory or a nearer component
-`AGENTS.md`. After moving a checkout, rerun installation with `--configure-only`
-to update absolute hook commands and `LOCATION.md`.
+Subdirectories and nested lesson domains are supported. The installed helper
+anchors all managed paths to its fixed repository root, never a nearer component
+`AGENTS.md`. After moving a target or interpreter, run the installed helper with
+`install --configure-only --root NEW_ROOT --non-interactive`; add
+`--python-executable` when needed. This refreshes integration files and the chosen
+activation block without replacing profiles or upgrading deployed code. To update
+the code/protocol, run a normal installation from the new source checkout.
 
-```powershell
-$Project = 'D:\new\project-location'
-$Mettle = Join-Path $Project '.agent-personality\tools\mettle.py'
-& $Python -X utf8 $Mettle install --root $Project --configure-only --python-executable $Python --runtimes codex claude opencode
-```
-
-The source checkout and installation target are distinct. Do not manufacture an
-`AGENTS.md` in the source checkout just to install into it. Moving the source
-checkout alone does not affect an installed copy. To update its helper/protocol,
-run a normal installation from the source; `--configure-only` refreshes launches
-without upgrading the deployed helper or changing personality files.
-
-There is no independent `skills/` subsystem in V1. A lesson may describe a scoped
-procedure; `tools/` contains maintained implementation code, not autonomously
-acquired capabilities.
+An existing `opencode.jsonc` is not rewritten. Exclude OpenCode from installation
+and use `adapter --runtime opencode` to obtain a manual-merge fragment; see
+[the integration guide](docs/integrations.md). No independent `skills/` subsystem
+is installed: procedures remain scoped lessons and `tools/` is maintained code.
 
 ## How the loop works
 

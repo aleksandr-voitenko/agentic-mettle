@@ -642,7 +642,25 @@ def merge_config(existing: dict, fragment: dict, runtime: str) -> dict:
     return output
 
 
-def install(root: Path, runtimes: list[str], configure_only: bool = False, python: str | None = None) -> dict:
+def installer_module():
+    # A dry run from an installed helper must not create target __pycache__ files.
+    previous = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        import mettle_installer
+        return mettle_installer
+    finally:
+        sys.dont_write_bytecode = previous
+
+
+def install(root: Path, runtimes: list[str], configure_only: bool = False, python: str | None = None,
+            *, agents_position: str = "skip", profiles: dict[str, str] | None = None,
+            replace_profiles: bool = False, dry_run: bool = False,
+            expected_plan: str | None = None, remember: bool = False) -> dict:
+    # The low-level API preserves the legacy no-augmentation default. The CLI
+    # chooses append/remembered placement through the shared setup frontend.
+    mettle_installer = installer_module()
+    require(not configure_only or not profiles, "--configure-only does not change profiles")
     store = Store(root, allow_missing_agents=True)
     root = store.root
     executable = python_executable(python)
@@ -676,6 +694,7 @@ def install(root: Path, runtimes: list[str], configure_only: bool = False, pytho
     if not configure_only:
         files = {
             safe_path(root, PACKAGE + "/tools/mettle.py"): read(source / "mettle.py"),
+            safe_path(root, PACKAGE + "/tools/mettle_installer.py"): read(source / "mettle_installer.py"),
             safe_path(root, PACKAGE + "/PERSONALITY.md"): read(source / "PERSONALITY.md"),
             safe_path(root, PACKAGE + "/REFERENCE.md"): read(source / "docs/records.md"),
             safe_path(root, PACKAGE + "/.gitignore"): "state/\n__pycache__/\n*.pyc\n",
@@ -710,31 +729,11 @@ def install(root: Path, runtimes: list[str], configure_only: bool = False, pytho
     # Preflight all paths before creating the root marker or changing state.
     for folder in ("personality", "memory/lessons", "memory/episodes", "memory/reviews", "memory/reconciliations", "sessions"):
         store.path(folder)
-    store.state.mkdir(parents=True, exist_ok=True)
-    agents_created = False
-    with store.lock():
-        records, lessons = store.snapshot()
-        agents = safe_path(root, "AGENTS.md")
-        if not agents.exists():
-            # Publish a neutral scaffold without replacing an operator's file,
-            # including one created between preflight and publication.
-            write_atomic(agents, "# Project instructions\n", exclusive=True)
-            agents_created = True
-        else:
-            require(agents.is_file(), f"Root AGENTS.md must be a regular file: {agents}")
-        for path, content in files.items():
-            write_atomic(path, content)
-        for folder in ("personality", "memory/lessons", "memory/episodes", "memory/reviews", "memory/reconciliations", "sessions"):
-            store.path(folder).mkdir(parents=True, exist_ok=True)
-        store.reindex(lessons)
-        for path, content in configs.items():
-            if path.exists() and path.read_bytes() == content.encode("utf-8"):
-                continue
-            if path.exists():
-                backup = path.with_name(path.name + ".mettle-backup-" + uuid.uuid4().hex[:8])
-                write_atomic(backup, path.read_bytes(), exclusive=True)
-            write_atomic(path, content)
-    return {"version": VERSION, "root": str(root), "python_executable": executable, "runtimes": runtimes, "agents_created": agents_created, "state_preserved": True, "configs": [p.relative_to(root).as_posix() for p in configs], "notice": "Review/trust hooks in each runtime. Live-agent loading has not been verified by this installer. Do not commit generated absolute-path hook configuration."}
+    return mettle_installer.finish_install(
+        sys.modules[__name__], store, files, configs, runtimes=runtimes, executable=executable,
+        agents_position=agents_position, profiles=profiles, replace_profiles=replace_profiles,
+        dry_run=dry_run, expected_plan=expected_plan, remember=remember,
+    )
 
 
 def bootstrap(store: Store, runtime: str, event: dict) -> str:
@@ -786,12 +785,13 @@ def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--version", action="version", version=VERSION)
     sub = result.add_subparsers(dest="command", required=True)
-    for name in ("install", "adapter", "bootstrap", "search", "show", "publish", "check", "reindex", "template"):
+    for name in ("install", "presets", "adapter", "bootstrap", "search", "show", "publish", "check", "reindex", "template"):
         item = sub.add_parser(name)
+        if name == "presets":
+            continue
         item.add_argument("--root", help="Existing designated target directory; install creates root AGENTS.md if absent; installed helper resolves its fixed location")
         if name == "install":
-            item.add_argument("--runtimes", nargs="*", choices=["codex", "claude", "opencode"], default=["codex", "claude", "opencode"])
-            item.add_argument("--configure-only", action="store_true")
+            installer_module().add_arguments(item)
         if name in {"install", "adapter"}:
             item.add_argument("--python-executable", help="Concrete console Python 3.11+ executable; defaults to this running interpreter")
         if name in {"adapter", "bootstrap"}:
@@ -846,10 +846,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "template":
             output_text(template(args.kind), args.output)
             return 0
-        root = resolve_root(args.root)
-        if args.command == "install":
-            print(json.dumps(install(root, args.runtimes, args.configure_only, args.python_executable), indent=2))
+        if args.command in {"install", "presets"}:
+            mettle_installer = installer_module()
+            result = (mettle_installer.catalog() if args.command == "presets" else
+                      mettle_installer.run(sys.modules[__name__], args))
+            print(json.dumps(result, indent=2, ensure_ascii=False))
             return 0
+        root = resolve_root(args.root)
         if args.command == "adapter":
             require(args.runtime != "manual", "Choose a runtime")
             root = Store(root, allow_missing_agents=True).root
