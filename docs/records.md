@@ -1,10 +1,15 @@
 # Record format and lifecycle
 
-All record files are UTF-8 Markdown. The first block contains **JSON** between
+All record files are UTF-8 Markdown. Generated files use UTF-8 without a BOM and
+LF line endings. User-edited inputs can have a UTF-8 BOM and CRLF; other encodings
+are rejected rather than guessed. Accepted historical bytes are not rewritten
+when read or reindexed. The first block contains **JSON** between
 `---` delimiters. JSON is used to keep the helper dependency-free; arbitrary YAML
 syntax is not supported. Markdown bodies remain readable with normal tools and
-`grep`/`rg`. Run `template KIND` to generate a correctly shaped draft with a
-unique ID. A draft is not accepted evidence until published.
+`grep`/`rg`. Run `template KIND --output draft.md` to generate a correctly shaped
+draft with a unique ID, without relying on shell redirection encoding. The
+output must be a new file; no overwrite option is provided. Omitting `--output`
+retains stdout. A draft is not accepted evidence until published.
 
 ## Kinds
 
@@ -17,7 +22,9 @@ unique ID. A draft is not accepted evidence until published.
 
 Common metadata: `schema: 1`, `kind`, `id`, `title`, `created_at` (ISO-8601 with a
 timezone). Bodies and required metadata must not retain template TODOs. IDs are
-unique within the one store. Timestamps are recorded metadata, not independently
+unique within the one store, including case-insensitive comparisons. References
+must still use the exact accepted spelling; the helper never folds or renames
+IDs. Timestamps are recorded metadata, not independently
 verified evidence that an event occurred.
 
 An episode adds `runtime`, `model`, `session` (use `unknown`, never fabricate), and
@@ -30,8 +37,17 @@ A lesson adds `revision`, `status`, `domain`, `scope`, `tags`, `aliases`, `origi
 `support`, `counterevidence`, `reconciliations`, `supersedes`, and `superseded_by`.
 The evidence, scope, tag, alias, and supersession fields are arrays of strings. Domains allow
 nested lowercase paths such as `engineering/generated-code`. They cannot contain
-`..`, absolute paths, or symlinks. `scope` must state relevant components and
-conditions. A source-code path is interpreted relative to root `AGENTS.md`.
+`..`, absolute or drive-relative paths, symlinks, junctions, or reserved Windows
+components such as `con`, `aux`, and `lpt1`. Trailing dots/spaces and alternate
+data stream syntax are also refused. `scope` must state relevant components and
+conditions. Source-code paths are interpreted relative to root `AGENTS.md`; use
+forward slashes for portable references. Generated publication paths, search
+results, and index paths use forward slashes on every OS. Existing prose and
+metadata are not silently migrated. New IDs/domains must be portable on every
+OS. Existing POSIX-only domain names and case-distinct histories remain readable
+on POSIX; Windows reports incompatible archives without changing the history.
+Do not copy such an archive onto a case-insensitive filesystem without operator
+review, where distinct files could otherwise be lost by the copy itself.
 
 `origin` contains episode IDs. `support` and `counterevidence` contain review IDs,
 not repeated summaries of the original incident. A new lesson starts at revision
@@ -56,19 +72,42 @@ inference engine automatically performing these operations.
 
 Commands below run from the target root for brevity. From a component directory,
 use the installed helper's absolute path. Do not replace the designated root
-with the component's `AGENTS.md`.
+with the component's `AGENTS.md`. Use the selected interpreter and argument
+prefix recorded in `.agent-personality/LOCATION.md`.
+
+Windows PowerShell 5.1 or 7:
+
+```powershell
+$Python = 'C:\Path\To\Python311\python.exe'  # Use LOCATION.md's selected executable.
+$M = Join-Path $PWD '.agent-personality\tools\mettle.py'
+& $Python -X utf8 $M template episode --output episode-draft.md
+# Edit as UTF-8: fill in real evidence, runtime/model/session, and all sections.
+& $Python -X utf8 $M publish episode-draft.md
+& $Python -X utf8 $M template lesson --output lesson-draft.md
+# Add the accepted episode ID to origin; write scoped practice and exceptions.
+& $Python -X utf8 $M publish lesson-draft.md --expected-revision 0
+& $Python -X utf8 $M search generated bindings
+& $Python -X utf8 $M show L-REPLACE_WITH_ACTUAL_ID
+```
+
+Do not create drafts using PowerShell 5.1 `>`/`Out-File`, which can produce
+UTF-16. The helper's `--output` works in both PowerShell versions. Keep private
+drafts out of source commits. Use a new filename for each draft.
+
+macOS/Linux (set `PYTHON` to the selected executable):
 
 ```sh
 M=.agent-personality/tools/mettle.py
-python3 "$M" template episode > /tmp/mettle-episode.md
+PYTHON=/absolute/path/to/python3
+"$PYTHON" -X utf8 "$M" template episode --output /tmp/mettle-episode.md
 # Fill in real evidence, runtime/model/session, and all body sections.
-python3 "$M" publish /tmp/mettle-episode.md
+"$PYTHON" -X utf8 "$M" publish /tmp/mettle-episode.md
 
-python3 "$M" template lesson > /tmp/mettle-lesson.md
+"$PYTHON" -X utf8 "$M" template lesson --output /tmp/mettle-lesson.md
 # Add the accepted episode ID to origin; write scoped practice and exceptions.
-python3 "$M" publish /tmp/mettle-lesson.md --expected-revision 0
-python3 "$M" search generated bindings
-python3 "$M" show L-REPLACE_WITH_ACTUAL_ID
+"$PYTHON" -X utf8 "$M" publish /tmp/mettle-lesson.md --expected-revision 0
+"$PYTHON" -X utf8 "$M" search generated bindings
+"$PYTHON" -X utf8 "$M" show L-REPLACE_WITH_ACTUAL_ID
 ```
 
 At a **later applicable opportunity**, publish a new episode and a review that
@@ -78,11 +117,22 @@ application to complete the template. Then publish a reconciliation referencing
 revision 2, retain the prior evidence arrays, add the new reconciliation and
 review, and publish with `--expected-revision 1`.
 
-```sh
-python3 "$M" show L-REPLACE_WITH_ACTUAL_ID > /tmp/mettle-revision.md
+PowerShell:
+
+```powershell
+& $Python -X utf8 $M show L-REPLACE_WITH_ACTUAL_ID --output revision-draft.md
 # Update the draft, not current.md or revisions/0001.md.
-python3 "$M" publish /tmp/mettle-revision.md --expected-revision 1
-python3 "$M" check
+& $Python -X utf8 $M publish revision-draft.md --expected-revision 1
+& $Python -X utf8 $M check
+```
+
+macOS/Linux:
+
+```sh
+"$PYTHON" -X utf8 "$M" show L-REPLACE_WITH_ACTUAL_ID --output /tmp/mettle-revision.md
+# Update the draft, not current.md or revisions/0001.md.
+"$PYTHON" -X utf8 "$M" publish /tmp/mettle-revision.md --expected-revision 1
+"$PYTHON" -X utf8 "$M" check
 ```
 
 A counterexample should cause prompt review, usually a contested or narrowed
@@ -107,6 +157,13 @@ store lock. If the process dies between publication and view refresh, inspection
 and `reindex --repair` rebuild views from accepted revisions. It does not discard
 evidence. A revision cannot change a lesson's ID, domain, or original creation
 time; its next number must be contiguous.
+
+On native Windows the initial supported storage target is local NTFS. Publication
+uses `os.link` to expose a complete file without replacing an accepted record;
+views use `os.replace`. An unsupported hard link, sharing violation, unreadable
+subtree, or lock error is visible and never triggers an overwrite fallback.
+This is not a power-loss or hostile-concurrent-editor guarantee. Synchronized
+folders, network shares, and other Windows filesystems have not been verified.
 
 Normal edits must not erase historical origin, support, counterevidence,
 reconciliations, or predecessors. A correction should explain why earlier

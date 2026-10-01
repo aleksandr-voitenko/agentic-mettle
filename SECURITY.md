@@ -33,10 +33,39 @@ Run one authoritative writer for the single V1 personality.
 
 ## Filesystem and retention
 
-The installer requires the designated root AGENTS.md and rejects symlinked state
-paths. It does not change AGENTS.md or CLAUDE.md. Generated runtime files contain
-absolute paths; rerun configuration after moving the checkout. Installation is
-atomic per file, not a transaction spanning all configs.
+The installer uses the explicitly designated target directory and creates a
+minimal root AGENTS.md if missing, after configuration and history validation.
+It preserves an existing AGENTS.md and uses exclusive publication so that
+creation cannot overwrite a concurrent operator edit. Symlinked root instruction
+files and state paths, Windows junctions, and other reparse-point entries are
+rejected. Archive traversal checks entries before descending and reports
+unreadable subtrees. Windows
+drive-relative paths, reserved device names, trailing dots/spaces, alternate data
+stream syntax, and case-insensitive logical ID collisions are refused on Windows.
+New IDs/domains must be portable on every OS. Existing POSIX-only histories
+remain readable on POSIX; on Windows incompatibilities are reported, never
+silently renamed or discarded.
+It does not edit existing instructions or create CLAUDE.md. Generated runtime
+files contain absolute paths; rerun configuration after moving the checkout.
+Installation is atomic per file, not a transaction spanning all configs.
+
+Native Windows support initially targets **local NTFS**. Other Windows
+filesystems, network shares, synchronized directories (including cloud-backed
+reparse points), and unusual case-sensitivity settings are not qualified. A
+fully written/flushed temporary file is published with `os.link` for immutable
+records; `os.replace` updates generated views. There is no unsafe copy/overwrite
+fallback if the filesystem refuses those operations. Cooperating helper readers
+take the same lock as writers. Sharing violations, lock contention, and I/O
+errors remain visible. This does not promise power-loss durability or defend
+against a hostile process racing path checks or editing the archive directly.
+
+The installer validates a concrete Python 3.11+ executable and generates UTF-8
+launches. Claude's exec form needs no shell. Codex's native Windows hooks use
+CMD; `%` and `!` in executable/target paths are refused before any installation
+writes because CMD can expand them inside quotes. Runtime trust and hook approval
+remain necessary. No execution-policy bypass is generated. JSONC requires a
+manual merge; changed JSON configurations retain their exact original bytes in
+backups. Reconfiguration changes operator-owned launches, never learned history.
 
 Mutable state is ignored by the installed package's .gitignore. Git ignore rules
 are not privacy protection, backup, or permission separation. Use appropriate

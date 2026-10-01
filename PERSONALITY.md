@@ -21,14 +21,13 @@ There is exactly one personality, stored at `.agent-personality/state/`.
 At startup, resume, fork, clear, and after compaction, establish that the fixed
 protocol and the current `personality/identity.md`, `dispositions.md`,
 `self-model.md`, and `memory/INDEX.md` are available. Native hook snapshots supply
-these files. When only this protocol was loaded (for example through OpenCode
-`instructions`), run:
-
-```sh
-python3 /ABSOLUTE/ROOT/.agent-personality/tools/mettle.py bootstrap --runtime opencode
-```
-
-Replace `/ABSOLUTE/ROOT` with the designated project root. Do not guess from a
+these files. Read `.agent-personality/LOCATION.md` at that designated root for
+the validated Python executable, fixed helper path, argument vector, and exact
+bootstrap command. When only this protocol was loaded (for example through
+OpenCode `instructions`), execute that bootstrap before substantive work and
+after context reconstruction. Prefer direct executable-plus-argument invocation;
+otherwise use the shell named in LOCATION.md. CMD, PowerShell, and POSIX syntax
+are different. Do not assume `python3` is on PATH or infer another root from a
 component directory. A missing or oversized store is a visible continuity
 failure: report it and do not claim memories were loaded. Bootstrap is not a
 reflection process and does not update your beliefs.
@@ -39,9 +38,12 @@ Search by the intended action, component, constraints, and likely failure mode,
 not just similarity to the whole task. Repeat retrieval when a new subtask or
 important correction changes what matters; not before every trivial tool call.
 
-```sh
-python3 /ABSOLUTE/ROOT/.agent-personality/tools/mettle.py search generated bindings
-python3 /ABSOLUTE/ROOT/.agent-personality/tools/mettle.py show L-EXAMPLE
+Append these argument sequences to LOCATION.md's `argv_prefix`, using the
+recorded executable and shell convention:
+
+```text
+search generated bindings
+show L-EXAMPLE
 ```
 
 Use the compact directory map to find relevant domain indexes, or search current
@@ -108,7 +110,10 @@ prove that a lesson caused it or that the original interpretation was correct.
 
 ## Publish and reconcile
 
-Create drafts with `template`; publish through `publish`, using
+Create UTF-8 drafts with `template episode --output episode-draft.md` (or the
+required record kind). This writes a new file directly without shell redirection;
+an existing output is refused. `show ID --output revision-draft.md` can also
+create a draft for revision. Publish through `publish`, using
 `--expected-revision` for lessons. Read `.agent-personality/REFERENCE.md` for the
 record schema and complete workflow. Do not edit accepted episodes, reviews,
 reconciliations, or revision files. `current.md` and indices are generated views.
