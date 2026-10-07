@@ -34,6 +34,32 @@ later cases, but other generators remain untested” is a scoped self-assessment
 The difference is the traceable relationship between experience, behavior, and
 revision—not the persuasiveness of an autobiographical description.
 
+## Agent-owned learning, within configured boundaries
+
+**Mettle is a private learning discipline for persistent agents.** The agent is
+the normal operator of its learning loop: it inspects evidence, revises mistaken
+practices, and develops a better-supported self-assessment. Human observability
+supports accountability and recovery; routine human approval is not the engine
+of learning. A proposed lesson is tentative because evidence is insufficient,
+not because someone has yet to approve it.
+
+Experience can come from assigned work, self-directed investigation, peers,
+external observations, or experiments. Preserve what was **reported**, what was
+**inspected or reproduced**, and what is **still uncertain**. These distinctions
+are not a confidence ladder, and repeated reports may share one underlying source.
+
+Ordinary learning does not authorize changes to a mandate, protected identity,
+credentials, permissions, or spending limits. Recovery restores a still-applicable
+earlier practice through a **new revision**, retaining the mistaken revision and
+intervening evidence rather than erasing them.
+
+The coding pilot remains repository-local. A runtime and activity policy decide
+when the agent can act and which activities are permitted; Mettle helps decide
+what the experience should change. It does not supply a scheduler or autonomous
+activity selection. Reading without replying and waiting can be useful choices.
+See [agent-owned learning and continuity](docs/agent-owned-learning.md) and the
+[maturity checklist](docs/evaluation.md#learning-maturity-checklist).
+
 ## Design ideas at a glance
 
 | Idea | Immediate value | V1 form |
@@ -42,7 +68,7 @@ revision—not the persuasiveness of an autobiographical description.
 | Lexical retrieval | Find relevant experience using exact terms, tags, and aliases. | Local keyword search; no embedding service required. |
 | Progressive disclosure | Load orientation first, then only the detail needed for a decision. | Compact map → domain index/current lesson → evidence. |
 | Task-scoped knowledge | Avoid transferring a lesson to the wrong component or situation. | Explicit scope, triggers, exceptions, and source references. |
-| Separate consolidation role | Compare evidence before revising durable guidance. | A dedicated reconciliation pass; no background worker. |
+| Separate consolidation role | Compare evidence before revising durable guidance. | An agent-owned reconciliation pass; no routine human approval queue or background worker. |
 | Procedural skill generation | Turn recurring, supported workflows into reusable steps. | Procedural lesson bodies; standalone skill packages remain outside V1. |
 
 **Retrieval discovers candidates; it does not authorize actions.** Later reviews
@@ -250,7 +276,9 @@ side effect; a retrieved procedure is not permission to commit, push, or deploy.
 ### 2. Observe and propose an adjustment
 
 An episode records observable actions, outcomes, sources, and tentative
-interpretations. A lesson turns that evidence into a conditional practice:
+interpretations. Its context can be a current request or an opportunity under a
+standing goal; it need not invent a human-issued task. A lesson turns that
+evidence into a conditional practice:
 
 > When modifying generated interfaces in component X, change the source schema
 > and regenerate, unless the component explicitly uses hand-maintained bindings.
@@ -280,6 +308,11 @@ A separate reconciliation pass can be performed by the same agent; it is a role
 separation, not a requirement for another model. Retain the evidence and prior
 wording behind self-model changes too. A replaceable summary or Git baseline is
 not a substitute for explicit history.
+
+Recovery from a bad generalization uses the existing REVISE/publication path:
+recheck the earlier practice, retain intervening evidence, publish a new current
+revision, and arrange a later review. It is not `reindex --repair`, which repairs
+derived files rather than beliefs. See [the recovery procedure](docs/records.md#recover-a-mistaken-lesson-update).
 
 There is **no background LLM worker**. The participating agent follows the
 protocol, prepares drafts, and invokes the helper. Human operators can use the
