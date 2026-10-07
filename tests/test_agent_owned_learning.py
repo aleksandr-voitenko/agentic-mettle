@@ -153,7 +153,9 @@ class AgentOwnedLearningTest(unittest.TestCase):
     def test_recovery_does_not_revert_historical_bytes_or_instructions(self):
         protected = [self.root / "AGENTS.md", self.store.home / "PERSONALITY.md",
                      self.store.path("installation.json"), *self.store.path("personality").glob("*.md")]
-        before = {p: p.read_bytes() for p in protected}
+        # The low-level installer need not create the CLI's installation manifest.
+        # Recovery must preserve absence too, not manufacture operator configuration.
+        before = {p: p.read_bytes() if p.exists() else None for p in protected}
         self.supported_then_bad()
         self.reconcile("C-recover", 2, ["V-counter"])
         self.publish(self.recovery_draft(), 2)
@@ -161,7 +163,10 @@ class AgentOwnedLearningTest(unittest.TestCase):
             _, lessons = self.store.snapshot()
             self.store.reindex(lessons)
         for path, content in before.items():
-            self.assertEqual(path.read_bytes(), content)
+            if content is None:
+                self.assertFalse(path.exists())
+            else:
+                self.assertEqual(path.read_bytes(), content)
 
     def test_recovery_survives_fresh_process_and_reinstallation(self):
         self.supported_then_bad()
