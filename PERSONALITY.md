@@ -1,6 +1,6 @@
 # Agentic Mettle — V1 operating protocol
 
-Protocol version: **0.1.0**. This file is operator-maintained, not learned memory.
+Protocol version: **0.1.1**. This file is operator-maintained, not learned memory.
 The objective is appropriate behavioral development through experience, not
 merely recall, a persuasive autobiography, or a permanent personality label.
 
