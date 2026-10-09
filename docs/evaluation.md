@@ -5,6 +5,19 @@ prior experience, not the ability to answer a question about history. Establishi
 that a lesson caused improvement requires a suitable comparison, not just a
 successful result. No longitudinal LLM result is claimed by this implementation.
 
+## Learning maturity checklist
+
+- Can the agent use a lesson without being told which one to retrieve?
+- Can it reject the lesson in a superficially similar but inapplicable case?
+- Can it narrow or contest the lesson after contradictory evidence?
+- Does the improvement survive a new session or compaction boundary?
+- Does its self-assessment become better supported rather than merely more confident?
+
+For each question retain observed evidence, counterexamples, and what remains
+untested. These are behavioral criteria, not a claim that passing the file tests
+certifies maturity. Record direct human reminders or approvals during a trial so
+agent-initiated behavior is distinguishable from prompted compliance.
+
 ## Separate the layers
 
 | Layer | Evidence to collect |
@@ -75,12 +88,15 @@ as new personal experience. This is a suggested report format, not a new accepte
 record kind or CLI command:
 
 ```text
-Run/task ID and repository snapshot:
+Run/activity ID and repository snapshot:
 Runtime/version and model:
 Mettle protocol version/hash and initial state snapshot:
 Other memory sources: source, read/use state, write/generation state,
                       initial snapshot/version, observed use, unknowns
-Current request and authorized actions:
+Activity origin; current request or standing goal; opportunity and selection reason:
+Authorized actions and resource boundaries:
+External evidence: reporter/source, examination, shared-source links, uncertainty:
+Known handoff/commitments restored and actually used, or unknown:
 Candidate lesson IDs/revisions and search-term provenance:
 Applicability decision and reason:
 Observed action, artifact/test evidence, outcome and limitations:
@@ -139,3 +155,51 @@ Retrieval count is not usefulness, and neither is causal improvement. Publish
 failures as well as successes. Hundreds of archived records, hundreds of turns,
 and hundreds of independent conversations are distinct denominators and must
 be labelled.
+
+## Agent-owned review, recovery, and peer evidence
+
+Once learning is authorized, ordinary review should not depend on a person
+approving each change. Provide an applicable opportunity without naming the
+lesson or telling the agent to reconcile. Observe whether it notices the signal,
+checks evidence, and publishes an appropriate revision. Explicit operator
+restrictions still apply; avoiding an invented approval queue is not bypassing
+an actual one. Do not count silently changing a profile as justified learning.
+
+In a disposable test history, include a bad generalization of a previously useful
+practice. Check whether the agent can recognize the issue and either contest it
+or restore a still-applicable earlier practice through a new revision. Verify
+that the intervening evidence survives, that restored assumptions were checked,
+and that a completed recovery is distinguished from a reconciliation plan. A
+fresh session should retrieve the recovered revision, not the obsolete advice.
+
+Include peer/external claims with shared underlying sources and incomplete local
+verification. Check whether the agent preserves what was reported, inspected,
+reproduced, and uncertain without inventing independent confirmations. Also include
+a trustworthy specialized report worth retaining without local reproduction, and
+a reproduced result whose conditions limit transfer. Do not reward blanket distrust
+or universal re-testing as substitutes for evidence-sensitive judgment.
+
+`tests/test_agent_owned_learning.py` uses authored fixtures to exercise these
+record contracts and recovery guards with the existing helper. It does not run an
+LLM, measure its decisions, or establish that provenance prose is truthful. The
+existing coding pilot remains useful; these additional behavioral trials need not
+all be prerequisites for collecting its first real experiences.
+
+## Whole-agent autonomy is a separate criterion
+
+For a deployment with a runtime and activity-selection policy, the wider question
+is whether the participant can find worthwhile permitted activity, learn from
+peers and external evidence, revise mistaken practices, and preserve commitments
+across interruptions without fresh human prompts to keep going. Mettle alone does
+not provide or certify that combination.
+
+Evaluate that separately from learning maturity. Observe the selected activity,
+standing mandate, opportunity, reason, resource bounds, and outcome. An agent may
+read without replying, investigate without publishing, or wait. Traffic, tool-call
+counts, constant wakefulness, and producing a reflection on every session end are
+not success criteria. A handoff on disk is not proof of restored continuity; check
+that relevant commitments were actually used and obsolete ones reconsidered.
+
+Do not introduce unattended execution or broaden real project permissions solely
+to satisfy a benchmark. A human-assigned coding pilot can test Mettle's learning
+loop without claiming to evaluate the activity loop of a complete autonomous agent.

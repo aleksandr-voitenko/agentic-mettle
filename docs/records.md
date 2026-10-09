@@ -51,7 +51,9 @@ review, where distinct files could otherwise be lost by the copy itself.
 
 `origin` contains episode IDs. `support` and `counterevidence` contain review IDs,
 not repeated summaries of the original incident. A new lesson starts at revision
-1 with status `proposed`. `active` requires at least one later supporting review;
+1 with status `proposed`. This means evidential uncertainty, not pending human
+approval. Ordinary learning within configured scope is agent-owned; publication
+records a decision rather than proving it. `active` requires at least one later supporting review;
 this is a structural gate, not a declaration of universal validity. `contested`,
 `retired`, and `superseded` preserve uncertainty and replacement history.
 
@@ -203,7 +205,7 @@ prose, authorization decisions, or a claimed causal explanation.
 
 | Existing section | What a meaningful decision review should retain |
 |---|---|
-| Situation | Current request and component; candidate ID/revision; relevant terms from the request versus prior context; why the candidate was considered. |
+| Situation | Current request or standing goal; activity origin, opportunity, selection reason, and component; candidate ID/revision; terms from this context versus prior hints. |
 | Application | Applicability and current authorization; applied, rejected, or deferred decision; observable action or deliberate non-application. |
 | Outcome | Exact artifact, test, source, or attributed feedback; what was observed and what remains unknown. |
 | Assessment | Support, counterexample, uncertainty, non-application, misapplication, or obsolescence; scope and what needs review next. |
@@ -264,3 +266,109 @@ distinguish a reconciliation plan from the updates actually published. Frequency
 of retrieval is not validation, and replacing a summary or Git baseline is not
 historical preservation. Operator-authorized privacy redaction remains the
 explicit exception described above.
+
+## Experience context and evidence provenance
+
+Meaningful experience can come from assigned work, a standing commitment,
+self-directed investigation, a peer interaction, an external observation, or an
+experiment. Do not invent a user request to fit the record. Put the relevant
+context in Observe (episodes) or Situation (reviews), using concise labels when
+helpful:
+
+```text
+Activity origin:
+Goal or standing commitment:
+Opportunity noticed and reason for choosing it:
+Permitted boundaries:
+Observable action and outcome:
+```
+
+These are body prompts, not new required metadata fields. Existing records remain
+valid. A later review opportunity may be discovered by the agent when within its
+mandate. Pending evidence is not an obligation to run an unauthorized experiment.
+Session boundaries can require handoffs without producing learning; the helper
+neither schedules work nor automatically loads a private agenda.
+
+For a claim from another participant or an external source, retain three distinct
+parts in Evidence/Uncertainty and Outcome/Assessment:
+
+```text
+Origin: reporter, underlying source/reference, known shared-source reports.
+Examination: what I actually read, inspected, or reproduced; method/conditions.
+Assessment: what is supported, exceptions, independence known/unknown, open questions.
+```
+
+A specialized result may be retained as reported without local reproduction.
+"Reproduced" does not mean "universally true"; "reported" does not mean "useless."
+These are not an automatic confidence ladder. Peer agreement and repeated reports
+of one result are not independent evidence. A reported fact need not become a
+procedural lesson, and neither justifies a self-assessment without evidence about
+the agent's own behavior. A peer can propose a correction, not rewrite private
+state or expand permissions.
+
+The helper validates references and section structure, not provenance prose or
+source independence. It cannot determine whether a cited test actually happened.
+Use attributed observations and verifiable artifacts, and preserve uncertainty.
+
+## Recover a mistaken lesson update
+
+Semantic recovery restores a usable practice after a bad update. It is distinct
+from repairing files with `reindex --repair` or restoring an installation backup.
+Within its delegated learning scope, the agent can perform it without a routine
+human approval queue. Current operator restrictions still apply.
+
+Suppose L-example@1 is a narrow useful practice, @2 is a harmful generalization,
+and later evidence challenges @2. Recovery publishes @3; it never deletes @2.
+Use the existing commands and schema 1, not a new RECOVER enum or rollback CLI:
+
+1. Read the current revision and the earlier source revision. Inspect intervening
+   reviews and check that the older prerequisites still apply now. Use current
+   metadata as the draft base; do not start with an old metadata snapshot that
+   omits newer evidence.
+2. Record the detected problem in an episode and review as appropriate. When a
+   material issue is unresolved, contest or retire the practice rather than
+   blindly reinstate an earlier one.
+3. Publish a reconciliation with `operation: REVISE`, including the current exact
+   revision in `inputs` and relevant episode/review IDs in `evidence`. Name the
+   earlier source revision, restored parts, rejected parts, prerequisite checks,
+   and uncertainty in Decision and Planned changes. Both revisions can be listed
+   in `inputs` when useful.
+4. Increment the current revision. Keep its origin, support, counterevidence,
+   reconciliations, and predecessor references; add the new reconciliation and
+   evidence. Restore only the still-applicable practice and exceptions. A retained
+   historical support entry is not automatically support for the recovered scope.
+   Reassess status; use `proposed` or `contested` when warranted, rather than copying
+   the old `active` label.
+5. Publish with `--expected-revision` equal to the current revision. On a conflict,
+   reread and reconcile; do not force an old plan over newer state. Verify the
+   published current record with `show` and `check`, and record a later applicable
+   review when evidence becomes available.
+
+For a synthetic @2 → @3 recovery, these are argument sequences to append to the
+installed `LOCATION.md` executable/argv prefix. Substitute actual IDs and new
+local draft filenames; edit drafts before publication:
+
+```text
+show L-example --output current-draft.md
+show L-example --revision 1 --output earlier-reference.md
+template reconciliation --output recovery-reconciliation.md
+publish recovery-reconciliation.md
+publish current-draft.md --expected-revision 2
+show L-example
+check
+```
+
+The reconciliation records intent. If final publication fails, it does not mean
+the recovery happened. Existing immutable revisions remain the history, and the
+current record establishes the result. The helper does not infer the right older
+practice, choose its scope, or verify the semantic quality of the recovery.
+
+For a mistaken learned self-assessment or disposition, use the recorded before/
+proposed/after episode procedure above. Do not restore entire profile backups
+that erase unrelated learning or change protected identity. Profile history is
+still a protocol discipline, not an automatically enforced versioning engine.
+
+`tests/test_agent_owned_learning.py` exercises synthetic recovery and publication
+guards, an external report that does not automatically validate a lesson, and
+non-task episode contexts. These are storage/protocol contracts, not evidence
+that an LLM selected an activity or learned autonomously.
