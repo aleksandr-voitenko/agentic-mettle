@@ -1,6 +1,7 @@
 """Offline process/filesystem contracts. These do not certify live agent loading."""
 from __future__ import annotations
 
+import base64
 import contextlib
 import errno
 import io
@@ -26,9 +27,23 @@ def snapshot(output: bytes) -> dict:
 
 def run_cmd(command: str, **kwargs) -> subprocess.CompletedProcess:
     comspec = os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe")
-    # Match Codex 0.153.0: /C followed by raw outer quotes, not CRT escaping.
+    # Match Codex's CMD fallback: /C plus raw outer quotes, not CRT escaping.
     return subprocess.run(f'"{comspec}" /C "{command}"', executable=comspec,
-                          capture_output=True, timeout=30, **kwargs)
+                          creationflags=subprocess.CREATE_NO_WINDOW, capture_output=True, timeout=30, **kwargs)
+
+
+def windows_hook_shells() -> list[str]:
+    shells = ["cmd", m.windows_opencode_shell({})[0]]
+    if shutil.which("pwsh"):
+        shells.append(shutil.which("pwsh"))
+    return shells
+
+
+def run_windows_hook(command: str, shell: str, **kwargs) -> subprocess.CompletedProcess:
+    if shell == "cmd":
+        return run_cmd(command, **kwargs)
+    return subprocess.run([shell, "-NoLogo", "-NoProfile", "-Command", command],
+                          creationflags=subprocess.CREATE_NO_WINDOW, capture_output=True, timeout=30, **kwargs)
 
 
 class PortabilityTest(unittest.TestCase):
@@ -267,12 +282,15 @@ class PortabilityTest(unittest.TestCase):
             direct = {"type": "command", "command": r"C:\Old Python\python.exe", "args": ["-X", "utf8", old_helper, "bootstrap", "--runtime", runtime, "--hook"]}
             old_direct = {**direct, "args": direct["args"][2:]}
             windows = {"type": "command", "commandWindows": m.cmd_command([direct["command"], *direct["args"]])}
+            powershell = {"type": "command", "commandWindows": m.shell_command([direct["command"], *direct["args"]], "powershell")}
+            encoded = {"type": "command", "commandWindows": m.codex_windows_command([direct["command"], *direct["args"]], r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")}
+            platforms = {**windows, "command": old["command"]}
             unrelated = [{"type": "command", "command": "echo " + shlex.quote(old["command"])},
                          {**direct, "command": "echo"},
                          {**direct, "args": [*direct["args"], "unrelated"]},
                          {"type": "prompt", "prompt": "Keep this"}]
             empty_group = {"matcher": "operator-placeholder", "hooks": []}
-            existing = {"settings": {"keep": True}, "hooks": {"Stop": [{"hooks": unrelated}], "SessionStart": [{"matcher": "startup", "custom_existing_field": 1, "hooks": [old, direct, old_direct, windows, old, *unrelated]}, empty_group]}}
+            existing = {"settings": {"keep": True}, "hooks": {"Stop": [{"hooks": unrelated}], "SessionStart": [{"matcher": "startup", "custom_existing_field": 1, "hooks": [old, direct, old_direct, windows, powershell, encoded, platforms, old, *unrelated]}, empty_group]}}
             fragment = m.adapter(self.root, runtime)
             merged = m.merge_config(existing, fragment, runtime)
             self.assertEqual(merged["settings"], existing["settings"])
@@ -292,10 +310,40 @@ class PortabilityTest(unittest.TestCase):
 
     def test_mixed_platform_ownership_fails_preflight(self):
         fragment = m.adapter(self.root, "codex")
-        handler = {"type": "command", "command": "echo operator hook",
-                   "commandWindows": m.cmd_command(m.helper_argv(self.root, sys.executable, "bootstrap", "--runtime", "codex", "--hook"))}
-        with self.assertRaisesRegex(m.MettleError, "different owners"):
-            m.merge_config({"hooks": {"SessionStart": [{"hooks": [handler]}]}}, fragment, "codex")
+        argv = m.helper_argv(self.root, sys.executable, "bootstrap", "--runtime", "codex", "--hook")
+        for command in (m.cmd_command(argv), m.codex_windows_command(argv, r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")):
+            handler = {"type": "command", "command": "echo operator hook", "commandWindows": command}
+            with self.subTest(command=command), self.assertRaisesRegex(m.MettleError, "different owners"):
+                m.merge_config({"hooks": {"SessionStart": [{"hooks": [handler]}]}}, fragment, "codex")
+
+    def test_encoded_hook_ownership_requires_the_complete_canonical_invocation(self):
+        powershell = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+        argv = [r"C:\Python café & %PATH% !x! [a]'`\python.exe", "-X", "utf8",
+                r"D:\project café & %PATH% !x! [a]'`\.agent-personality\tools\mettle.py", "bootstrap", "--runtime", "codex", "--hook"]
+        command = m.codex_windows_command(argv, powershell)
+        self.assertTrue(m.owned_command(command, "codex"))
+        self.assertFalse(m.owned_command(command, "claude"))
+        prefix, encoded = command.split(" -EncodedCommand ")
+        encoded, suffix = encoded.split("\n", 1)
+        inner = base64.b64decode(encoded).decode("utf-16-le")
+        changed = base64.b64encode((inner + "; Write-Output 'operator command'").encode("utf-16-le")).decode()
+        unrelated = [command + "\noperator-command", command.replace(powershell, "echo", 1),
+                     f"{prefix} -EncodedCommand {changed}\n{suffix}",
+                     m.codex_windows_command([*argv, "extra-argument"], powershell),
+                     m.codex_windows_command([argv[0], "-c", "print('operator command')"], powershell)]
+        unrelated.extend(f"{prefix} -EncodedCommand {bad}\n{suffix}" for bad in ("!", "A", "YQ==", "AAAA", "===="))
+        fragment = m.adapter(self.root, "codex")
+        for value in unrelated:
+            with self.subTest(command=value):
+                self.assertFalse(m.owned_command(value, "codex"))
+                handler = {"type": "command", "commandWindows": value}
+                merged = m.merge_config({"hooks": {"SessionStart": [{"hooks": [handler]}]}}, fragment, "codex")
+                self.assertEqual(merged["hooks"]["SessionStart"][0]["hooks"], [handler])
+        for invalid in (r"C:\Windows space\powershell.exe", r"C:\Windows&other\powershell.exe", "powershell.exe"):
+            with self.assertRaisesRegex(m.MettleError, "system path"):
+                m.codex_windows_command(argv, invalid)
+        with self.assertRaisesRegex(m.MettleError, "8000"):
+            m.codex_windows_command([*argv, "x" * 3000], powershell)
 
     def test_reconfigure_moved_install_from_nested_component(self):
         m.install(self.root, ["codex", "claude", "opencode"])
@@ -433,7 +481,7 @@ class PortabilityTest(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "Native Windows launch contract")
     def test_windows_selected_interpreter_and_generated_hook_launches(self):
         # A real interpreter away from PATH, with shell-significant path characters.
-        environment = self.base / "Python café & (x)^$'`;[]"
+        environment = self.base / "Python café & (x)^$'`;[] %PATH% !VALUE!"
         # venv's creation UI refuses PATH separators, although a relocated venv's
         # executable works there. Exercise the valid Windows filename too.
         staging = self.base / "venv"
@@ -451,44 +499,82 @@ class PortabilityTest(unittest.TestCase):
         for runtime, name in [("claude", ".claude/settings.local.json"), ("codex", ".codex/hooks.json")]:
             handler = json.loads((self.root / name).read_bytes())["hooks"]["SessionStart"][0]["hooks"][0]
             self.assertEqual(len(json.loads((self.root / name).read_bytes())["hooks"]["SessionStart"]), 1)
-            for event in ("startup", "resume", "compact"):
+            for event in ("startup", "resume", "clear", "compact"):
                 payload = json.dumps({"source": event, "model": "日本"}, ensure_ascii=False).encode()
                 if runtime == "codex":
-                    result = run_cmd(handler["commandWindows"], input=payload, cwd=nested, env=env)
+                    for shell in windows_hook_shells():
+                        with self.subTest(shell=shell, event=event):
+                            result = run_windows_hook(handler["commandWindows"], shell, input=payload, cwd=nested, env=env)
+                            self.assertEqual((result.returncode, result.stderr), (0, b""))
+                            data = snapshot(result.stdout)
+                            self.assertEqual((data["root"], data["source"], data["model"]), (str(self.root), event, "日本"))
                 else:
                     self.assertEqual(handler["command"], str(executable))
                     result = subprocess.run([handler["command"], *handler["args"]], input=payload, cwd=nested, env=env, capture_output=True, timeout=30)
-                self.assertEqual((result.returncode, result.stderr), (0, b""))
-                data = snapshot(result.stdout)
-                self.assertEqual((data["root"], data["source"], data["model"]), (str(self.root), event, "日本"))
+                    self.assertEqual((result.returncode, result.stderr), (0, b""))
+                    data = snapshot(result.stdout)
+                    self.assertEqual((data["root"], data["source"], data["model"]), (str(self.root), event, "日本"))
             if runtime == "claude" and node:
                 # Exercise the documented exec form via Node's direct process API.
                 script = "const h=JSON.parse(process.argv[1]);const p=require('child_process').spawnSync(h.command,h.args,{input:require('fs').readFileSync(0)});if(p.error)throw p.error;process.stdout.write(p.stdout);process.stderr.write(p.stderr);process.exit(p.status ?? 1)"
                 result = subprocess.run([node, "-e", script, json.dumps(handler)], input=b'{"source":"startup"}', cwd=nested, env=env, capture_output=True, timeout=30)
                 self.assertEqual((result.returncode, result.stderr), (0, b""))
                 self.assertEqual(snapshot(result.stdout)["root"], str(self.root))
-        # CMD must preserve the Python exit status, not turn failures into success.
-        command = m.cmd_command(m.helper_argv(self.root, str(executable), "show", "E-missing"))
-        failure = run_cmd(command, env=env)
-        self.assertEqual(failure.returncode, 1)
-        self.assertEqual(failure.stdout, b"")
-        self.assertIn(b"Unknown record", failure.stderr)
+        command = m.codex_windows_command(m.helper_argv(self.root, str(executable), "show", "E-missing"), m.windows_opencode_shell({})[0])
+        for shell in windows_hook_shells():
+            with self.subTest(shell=shell):
+                failure = run_windows_hook(command, shell, env=env)
+                self.assertEqual(failure.returncode, 1)
+                self.assertEqual(failure.stdout, b"")
+                self.assertIn(b"Unknown record", failure.stderr)
+
+    @unittest.skipUnless(os.name == "nt", "Native Windows hook streams")
+    def test_codex_windows_streams_and_exit_codes(self):
+        # Replace only the disposable installed helper to exercise the actual
+        # generated handler, including errors that happen before bootstrap runs.
+        self.helper.write_text(
+            "import json, sys\n"
+            "event = json.load(sys.stdin)\n"
+            "sys.stdout.buffer.write(json.dumps({'event': event, 'argv': sys.argv[1:]}, ensure_ascii=False).encode('utf-8'))\n"
+            "sys.stderr.buffer.write('diagnostic café 日本\\n'.encode('utf-8'))\n"
+            "sys.exit(event['exit'])\n", encoding="utf-8")
+        handler = m.adapter(self.root, "codex")["hooks"]["SessionStart"][0]["hooks"][0]
+        for shell in windows_hook_shells():
+            for code in (0, 2, 7):
+                with self.subTest(shell=shell, code=code):
+                    event = {"exit": code, "source": "startup", "model": "café 日本", "padding": "x" * 65536}
+                    result = run_windows_hook(handler["commandWindows"], shell, input=json.dumps(event, ensure_ascii=False).encode())
+                    self.assertEqual(result.returncode, code, result.stderr)
+                    self.assertEqual(json.loads(result.stdout), {"event": event, "argv": ["bootstrap", "--runtime", "codex", "--hook"]})
+                    self.assertEqual(result.stderr.replace(b"\r\n", b"\n"), "diagnostic café 日本\n".encode())
+            missing = m.codex_windows_command([str(self.base / "missing.exe"), "--version"], m.windows_opencode_shell({})[0])
+            failure = run_windows_hook(missing, shell, input=b"{}")
+            self.assertNotEqual(failure.returncode, 0)
+            self.assertEqual(failure.stdout, b"")
+            self.assertIn(b"missing.exe", failure.stderr)
 
     @unittest.skipUnless(os.name == "nt", "Windows CMD expansion")
-    def test_cmd_unsafe_paths_fail_before_config_or_state_changes(self):
+    def test_cmd_expansion_paths_work_in_codex_but_fail_for_opencode_cmd(self):
         with self.assertRaisesRegex(m.MettleError, "8000"):
             m.cmd_command(["x" * 8001])
         for suffix in ("percent%PATH%", "bang!VALUE!"):
             root = self.base / suffix
             root.mkdir()
-            with self.assertRaisesRegex(m.MettleError, "cmd.exe"):
-                m.install(root, ["claude", "codex"])
-            self.assertEqual(list(root.iterdir()), [])
-            # These names are safe in Claude's direct exec form.
-            m.install(root, ["claude"])
+            m.install(root, ["claude", "codex"])
+            handler = json.loads((root / ".codex/hooks.json").read_bytes())["hooks"]["SessionStart"][0]["hooks"][0]
+            for shell in windows_hook_shells():
+                result = run_windows_hook(handler["commandWindows"], shell, input=b"{}")
+                self.assertEqual((result.returncode, result.stderr), (0, b""))
+                self.assertEqual(snapshot(result.stdout)["root"], str(root))
+            # These names are also safe in Claude's direct exec form.
             handler = json.loads((root / ".claude/settings.local.json").read_bytes())["hooks"]["SessionStart"][0]["hooks"][0]
             result = subprocess.run([handler["command"], *handler["args"]], input=b"{}", capture_output=True, timeout=30)
             self.assertEqual(snapshot(result.stdout)["root"], str(root))
+            (root / "opencode.json").write_text('{"shell":"cmd.exe"}', encoding="utf-8")
+            before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+            with self.assertRaisesRegex(m.MettleError, "cmd.exe"):
+                m.install(root, ["opencode"])
+            self.assertEqual({p: p.read_bytes() for p in root.rglob("*") if p.is_file()}, before)
 
     @unittest.skipUnless(os.name == "nt", "Windows PowerShell execution")
     def test_opencode_location_executes_in_powershell_51_and_7(self):

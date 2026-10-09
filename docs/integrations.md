@@ -1,6 +1,6 @@
 # Runtime integrations
 
-Documentation and public source checked: **2026-10-01**. Generated launches are
+Documentation and public source checked: **2026-10-02**. Generated launches are
 executed in offline process tests, including native Windows shells. This does
 **not** establish that a live agent loaded the context or followed the protocol.
 Record runtime versions and lifecycle traces before declaring a deployment
@@ -8,7 +8,7 @@ verified. The helper remains Python 3.11+, standard library only.
 
 | Runtime | Configuration baseline | Launch form |
 |---|---|---|
-| Codex | 0.153.0 or newer with the documented hooks interface; older versions not qualified | POSIX `command`; native Windows `commandWindows` for `cmd.exe /C` |
+| Codex | 0.153.0+ hooks interface; Windows shell selection checked against 0.159.2 | POSIX `command`; Windows `commandWindows` compatible with PowerShell and CMD |
 | Claude Code | 2.1.139+ (introduced hook `args`) | Absolute Python executable in `command`, argument array in `args`, no shell |
 | OpenCode | 1.18.34 source and current `instructions`/`shell` documentation | Explicit instruction loading, then a tool command for the configured shell |
 
@@ -88,8 +88,10 @@ existing files receive exact backups; unchanged files are not rewritten.
 The installer preflights JSON and keeps backups of changed config files. Repeated
 installation matches complete Mettle argument vectors, upgrades the earlier
 `python3`/POSIX-quoted format (including its Windows paths), and replaces the
-owned handler without accumulating duplicates. It recognizes `commandWindows`
-and Claude's `args`. Unrelated handlers, matcher groups, settings, and instruction
+owned handler without accumulating duplicates. It recognizes the legacy CMD and
+current encoded Windows commands, canonical PowerShell commands, and Claude's
+`args`. Encoded commands are decoded and compared to the complete generated
+invocation without executing them. Unrelated handlers, matcher groups, settings, and instruction
 entries are retained. A handler mixing a Mettle platform command with an unrelated
 platform override is ambiguous and requires an operator to split it first.
 No ownership metadata is inserted into runtime configuration. Changed configs
@@ -109,24 +111,49 @@ The current Codex documentation supports project-local hooks and post-compaction
 SessionStart context. Project trust and review of the exact hook definition are
 required; inspect `/hooks`. Do not bypass trust merely to make a test pass.
 
-On Windows, `commandWindows` contains a CMD-quoted command. Codex 0.153.0 uses
-`COMSPEC` (falling back to `cmd.exe`) with `/C` and outer command quotes; it does
-not choose PowerShell just because the operator launched Codex there. Keep
-`COMSPEC` pointed at `cmd.exe`. Every argument is individually quoted. Mettle
-rejects paths containing `%` or `!` because CMD expansion can change them even
-inside quotes, as well as embedded double quotes/control newlines. Choose a
-different path or exclude the CMD-based runtime. Spaces, Unicode, `&`, parentheses,
-carets, dollar signs, apostrophes, backticks, brackets, and semicolons are tested.
-Stdin/stdout/stderr and the Python exit code flow through CMD without a wrapper.
+On Windows, `commandWindows` selects command text, not a shell. Codex can use the
+session environment's shell, including PowerShell. Only when no shell is supplied
+does its runner fall back to `COMSPEC`/`cmd.exe /C`. The previous CMD-only command
+fails to parse in PowerShell. This does not establish a particular Codex release
+as the cause of a newly observed failure.
+
+Mettle generates one command for both PowerShell and CMD. Its first line launches
+the built-in Windows PowerShell executable by absolute path with `-NoProfile`,
+`-NonInteractive`, and a UTF-16LE base64 `-EncodedCommand`. The encoded script sets
+UTF-8 output, invokes the selected absolute Python executable, and exits with its
+status. It escapes PowerShell's executable-path wildcard handling so brackets and
+backticks remain literal. Encoding keeps project and Python paths out of the outer
+shell's expansion rules. CMD executes the first line; a second line propagates
+`$LASTEXITCODE` when the outer shell is PowerShell. JSON stdin, JSON stdout, stderr,
+and nonzero exit codes are exercised through both shells.
+
+The built-in launcher must exist under `SystemRoot`, and its own path must contain
+no spaces or shell metacharacters; unsupported system paths fail preflight.
+Project and Python paths support spaces, Unicode, `%`, `!`, `&`, parentheses,
+carets, dollar signs, apostrophes, backticks, brackets, and semicolons. The generated
+command is limited to 8000 characters for CMD compatibility. No Python or
+PowerShell lookup through `PATH` is needed. Windows shells other than CMD and
+PowerShell are not qualified by this adapter.
+
+To inspect the encoded script before approving a generated hook, extract the
+token after `-EncodedCommand` from `commandWindows` and decode it with
+`base64.b64decode(token).decode("utf-16-le")` in Python. Decoding does not execute
+the script. Upgrade from the source checkout with a normal installation; the
+old installed helper cannot generate this fix through `--configure-only` alone.
 
 Sources: [Codex hooks](https://learn.chatgpt.com/docs/hooks),
-[0.153.0 command runner](https://github.com/openai/codex/blob/rust-v0.153.0/codex-rs/hooks/src/engine/command_runner.rs),
+[0.159.2 session shell selection](https://github.com/openai/codex/blob/rust-v0.159.2/codex-rs/core/src/session/mod.rs),
+[0.159.2 command runner](https://github.com/openai/codex/blob/rust-v0.159.2/codex-rs/hooks/src/engine/command_runner.rs),
 [Windows override selection](https://github.com/openai/codex/blob/rust-v0.153.0/codex-rs/hooks/src/engine/discovery.rs).
 
 Existing `.codex/config.toml` is not rewritten. If it already defines hooks,
 inspect both sources for duplication. An older CLI, disabled hooks, managed
 policy, or a cloud orchestration environment may not support this local path.
 Do not treat a generated config file as proof that a hook executed.
+After upgrading, review the changed definition in Codex: its previous trust hash
+does not approve a modified command. Start the runtime at the designated
+installation root. A separate nested Git repository may not discover that root's
+project-local hook; verify the runtime's hook list for the actual workspace.
 
 ## Claude Code
 
@@ -243,24 +270,33 @@ $Reply | ConvertFrom-Json | Select-Object -ExpandProperty hookSpecificOutput
 ```
 
 This tests the helper's JSON contract. To test the **generated Codex command**
-through its actual Windows shell without another layer of shell quoting:
+through CMD and available PowerShell versions without another quoting layer:
 
 ```powershell
 $Smoke = @'
-import json, os, pathlib, runpy, subprocess, sys
+import json, os, pathlib, runpy, shutil, subprocess, sys
 root = pathlib.Path(sys.argv[1])
 helper = runpy.run_path(str(root / ".agent-personality/tools/mettle.py"))
 config = json.loads((root / ".codex/hooks.json").read_text(encoding="utf-8-sig"))
 handlers = [h for g in config["hooks"]["SessionStart"] for h in g["hooks"]
             if helper["owned_handler"](h, "codex")]
 assert len(handlers) == 1, "Review the hook configuration first"
-shell = os.environ["COMSPEC"]
 command = handlers[0]["commandWindows"]
-result = subprocess.run('"' + shell + '" /C "' + command + '"', executable=shell,
-                        input=b'{"source":"startup"}', capture_output=True)
-sys.stdout.buffer.write(result.stdout)
-sys.stderr.buffer.write(result.stderr)
-sys.exit(result.returncode)
+cmd = os.environ.get("COMSPEC", r"C:\Windows\System32\cmd.exe")
+powershell = str(pathlib.Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
+shells = [(cmd, '"' + cmd + '" /C "' + command + '"')]
+for shell in [powershell, shutil.which("pwsh")]:
+    if shell:
+        shells.append((shell, [shell, "-NoLogo", "-NoProfile", "-Command", command]))
+for shell, args in shells:
+    result = subprocess.run(args, executable=shell, input=b'{"source":"startup"}',
+                            capture_output=True, timeout=30,
+                            creationflags=subprocess.CREATE_NO_WINDOW)
+    assert result.returncode == 0, (shell, result.returncode, result.stderr)
+    assert not result.stderr, (shell, result.stderr)
+    reply = json.loads(result.stdout)
+    assert reply["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    print(shell, "OK")
 '@
 $Smoke | & $Python -X utf8 - $Project
 ```
@@ -322,6 +358,9 @@ PowerShell 7.6.5, and direct executable/argument invocation (also via Node
 20.19.6). Tests used disposable roots and a selected interpreter outside PATH,
 including spaces, Unicode, and shell metacharacters. They exercised synthetic
 startup/resume/compact payloads, output parsing, and exit-status propagation.
+In that suite, Codex's generated Windows command was exercised only through CMD;
+the PowerShell tests exercised OpenCode's LOCATION command. That gap allowed the
+Codex session-PowerShell failure described above to go undetected.
 The walkthrough retained four evidence records and two revisions of one lesson;
 it did not call a model or measure behavioral learning.
 
@@ -338,3 +377,34 @@ change, not a claim that every later installer change ran on that workstation.
 Use the current PR's CI results for subsequent Linux/Windows test outcomes.
 macOS runtime behavior, non-NTFS Windows storage, network shares, and synchronized
 directories remain outside that validation.
+
+## Windows hook correction validation (2026-10-02)
+
+On Python 3.13.15, the full suite ran 104 tests: 100 passed and four were skipped
+(three POSIX checks and Windows symlink creation without the required privilege).
+The synthetic walkthrough and Python compilation checks also passed.
+
+Before the fix, the new execution coverage reproduced the generated Codex command's
+parse failure in Windows PowerShell 5.1 and PowerShell 7. After the fix, the same
+generated handler passed through both PowerShell versions and CMD with hidden
+processes, piped lifecycle JSON, UTF-8 JSON output, and no bootstrap stderr.
+Coverage includes startup/resume/clear/compact events, interpreter paths outside
+`PATH`, spaces and shell metacharacters in interpreter/project paths, 64 KiB input,
+Unicode stderr, exact exit codes 0/2/7, and a missing executable. Upgrade tests
+replace legacy CMD, POSIX, direct-argument, and encoded handlers without duplicates
+while retaining unrelated commands and rejecting ambiguous ownership.
+
+The existing local deployment was upgraded with exact backups. Its installed
+handler also returned valid bootstrap JSON and exit 0 through CMD and both
+PowerShell versions. Repeated installation was a no-op with one Mettle hook.
+
+A separate fresh, read-only CLI conversation using Codex Desktop's bundled
+0.159.2 executable verified automatic startup delivery at the installation root.
+Codex initially listed the replacement as `modified`; after the operator approved
+that exact definition, it was trusted through Codex's configuration API. The fresh
+conversation received the expected root, `startup` source, and assigned identity
+without tool calls or manual bootstrap. A matching session ID in the helper's
+`snapshot_emitted` audit corroborated execution. No hook-trust bypass was used.
+The hook list also confirmed that the separate nested source repository did not
+discover the parent installation's hook. Desktop UI startup, live resume, and live
+compaction were not exercised by this check.
