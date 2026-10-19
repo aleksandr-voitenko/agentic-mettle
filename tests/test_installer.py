@@ -189,8 +189,12 @@ class InstallerTests(unittest.TestCase):
         result = self.run_setup("--identity-preset", "researcher", "--replace-profiles")
         self.assertEqual(self.dispositions.read_bytes(), original_dispositions)
         self.assertEqual(self.self_model.read_bytes(), original_self)
-        backup = next(path for path in result["backups"] if "identity.md.mettle-backup" in path)
-        self.assertEqual((self.root / backup).read_bytes(), original_identity)
+        backups = [path for path in result["backups"]
+                   if path.startswith(m.PACKAGE + "/state/backups/")
+                   and path.endswith("/state/personality/identity.md")]
+        self.assertEqual(len(backups), 1)
+        self.assertEqual((self.root / backups[0]).read_bytes(), original_identity)
+        self.assertFalse(list(self.identity.parent.glob("identity.md.mettle-backup-*")))
         self.assertTrue(result["memory_history_preserved"])
         self.assertEqual(result["profiles"]["identity.md"], "replace")
 
