@@ -1,6 +1,6 @@
 # Agentic Mettle — V1 operating protocol
 
-Protocol version: **0.2.0**. This file is operator-maintained, not learned memory.
+Protocol version: **0.2.1**. This file is operator-maintained, not learned memory.
 The objective is appropriate behavioral development through experience, not
 merely recall, a persuasive autobiography, or a permanent personality label.
 
@@ -95,8 +95,9 @@ running its side-effecting steps.
 When current lessons do not fit, explicitly use `search --kind episodes TERMS`
 to find accepted observations. Episode candidates are not instructions; read
 correction links and evidence before proposing a practice. Do not search scratch
-files or backups as if they were accepted guidance. Exact tokens and aliases
-can miss synonyms; revise search terms rather than force a match.
+files or backups as if they were accepted guidance. Aliases match whole tokens
+or complete ordered phrases: `source` alone does not activate `source of truth`.
+Expansion is one hop; phrases remain phrases in matching records. Revise search terms rather than force a match.
 For a meaningful rejection, `work reject W-ID L-ID@N --query TERMS --reason TEXT`
 can record the decision. `search --work W-ID` suppresses only that same query and
 revision in the unchanged activity; other queries or changed conditions require
@@ -186,11 +187,19 @@ its exact bytes and hash. Product code stays in its normal project locations.
 Workspaces, drafts, and backups are not accepted memories or additional rules.
 
 Before closing meaningful work, run `work checkpoint W-ID` and inspect its bounded
-publication packet plus related accepted experience. Decide to propose, review,
-reconcile, defer with a concrete revisit trigger, or make no learning update.
+publication packet plus related accepted experience. Decide separately what
+experience is worth retaining, what practice needs learning/review, and whether
+any self-assessment change is supported. A useful revision-specific finding or
+coverage limit may warrant an episode without a new lesson or personality change.
+Check for an existing record before duplicating it; preserve sources and limits.
+Decide to propose, review, reconcile, defer, or make no further learning change.
 Record the decision using checkpoint options and link the actual published
-records; intention alone is not completed reconciliation. A new relevant event
-can warrant a checkpoint before the activity ends. Do not create lesson quotas.
+records; intention alone is not completed reconciliation. After publishing an
+episode, a `no-update` checkpoint can cite its ID with `--records E-ID` while
+leaving lessons and self-assessment unchanged. It does not mean no files were
+written. Retaining nothing remains valid when there is no useful new experience;
+do not log every turn or force generalizations. A new relevant event can warrant
+a checkpoint before the activity ends. Do not create lesson quotas.
 One meaningful event may justify a scoped **proposed** practice; later support
 within tested conditions does not require universal validity or proof of a causal
 benefit attributable to Mettle. Separate local support, untested transfer, and

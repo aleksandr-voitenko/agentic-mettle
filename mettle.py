@@ -21,7 +21,7 @@ import sys
 import tempfile
 import uuid
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 PACKAGE = ".agent-personality"
 STATUSES = {"proposed", "active", "contested", "retired", "superseded"}
 KINDS = {"episode": "E", "lesson": "L", "review": "V", "reconciliation": "C"}

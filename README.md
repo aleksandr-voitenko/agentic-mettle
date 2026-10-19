@@ -10,7 +10,7 @@ help an agent develop through its history, not merely recall that history.
 > Can the agent make a better-informed decision because of an earlier experience,
 > recognize when its lesson does not apply, and revise it when evidence changes?
 
-**Version 0.2.0 — experimental V1 pilot.** This repository provides an operating
+**Version 0.2.1 — experimental V1 pilot.** This repository provides an operating
 protocol, a standard-library-only Python helper, runtime configuration adapters,
 record validation, and offline tests. It does not establish reliable reflective
 identity across hundreds of real conversations. Live runtime integration and
@@ -93,13 +93,20 @@ work checkpoint W-ID
 Use the returned work ID, fill the draft with actual evidence, and record a
 checkpoint decision before closing the activity. A bounded proposed lesson does
 not require universal proof; `defer` with a revisit trigger and `no-update` remain
-valid. The helper tracks publication, not the truth of the reflection.
+valid. **Retaining useful experience, learning a reusable practice, and changing
+a self-assessment are separate decisions.** Publish a worthwhile observation as
+an episode, then use `no-update --records E-ID` when no lesson or self-model
+change is warranted. Retaining nothing is also valid; this is not a diary quota.
+The helper tracks publication, not the truth of the reflection.
 
 When lessons do not fit, **`search --kind episodes TERMS`** retrieves accepted
 observations explicitly, including correction links. Token-aware matching reduces
 incidental substring/generic matches. Scratch files and backups are never treated
 as accepted memory. New drafts can retain known session and protocol provenance;
-old unknown identities are not guessed.
+old unknown identities are not guessed. Vocabulary aliases are phrase-aware:
+`source` alone does not activate `source of truth`. Full phrases retain word
+order and stop words; single-token aliases and compound API names still work.
+No embedding service or accepted-record migration is required.
 
 Existing pilots can use **`migrate-work`** to preview moving legacy root drafts,
 logs, and backups. Applying requires the reviewed `plan_id`; exact-byte backups,
