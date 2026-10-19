@@ -391,11 +391,12 @@ def checkpoint(api, store, identifier: str, decision: str | None, reason: str | 
                 "publications": [{"record": r, "title": known[r][0]["title"], "kind": known[r][0]["kind"],
                                   "path": known[r][2].relative_to(store.root).as_posix()} for r in refs[-limit:] if r in known],
                 "omitted": max(0, len(refs) - limit), "decisions": DECISIONS,
-                "questions": ["What reusable practice can be proposed within observed conditions?",
-                              "Which existing lesson needs a review or reconciliation?",
-                              "Are locally supported results being confused with universal or causal proof?",
-                              "What remains uncertain, and when should it be revisited?"],
-                "note": "Inspect full records and related memory. This packet is a prompt for agent-owned judgment, not an automatic conclusion."}
+                "questions": ["Experience retention: is there a useful observation, finding, correction, or limit worth preserving as an episode, even without a reusable lesson? Check for an existing record before duplicating it.",
+                              "Practice learning: does the evidence warrant a scoped proposed lesson, review, or reconciliation, separately from retaining the experience?",
+                              "Self-assessment: is there evidence about the agent's own behavior that warrants a recorded change, rather than merely a fact about the subject?",
+                              "Are local support, untested transfer, and causal attribution being assessed separately?",
+                              "What should be retained, what remains unchanged or uncertain, and when should it be revisited?"],
+                "note": "Inspect full records and related memory. A no-update checkpoint may cite retained episode IDs in --records: it means no further lesson or self-model change, not that nothing was worth storing. Retaining nothing is also valid. These are agent-owned decisions, not automatic publication or proof."}
     api.require(work["status"] != "closed", "Resume closed work before changing its checkpoint")
     api.require(decision in DECISIONS, "Invalid checkpoint decision")
     reason = field(api, reason, "checkpoint reason", 2000)
@@ -472,23 +473,59 @@ def update(api, store, identifier: str, status: str | None, next_action: str | N
     return {k: work[k] for k in ("id", "status", "next_action", "activity_revision")}
 
 
+def token_sequence(text: str) -> tuple[str, ...]:
+    """Keep order, repetitions and stop words for phrases; preserve API compounds."""
+    return tuple(re.findall(r"[^\W_]+(?:[-_][^\W_]+)*", text.casefold(), re.UNICODE))
+
+
 def tokens(text: str) -> set[str]:
-    return set(re.findall(r"[^\W_]+(?:[-_][^\W_]+)*", text.casefold(), re.UNICODE))
+    return set(token_sequence(text))
+
+
+def contains_phrase(sequence: tuple[str, ...], phrase: tuple[str, ...]) -> bool:
+    return bool(phrase) and any(sequence[i:i + len(phrase)] == phrase
+                               for i in range(len(sequence) - len(phrase) + 1))
+
+
+def query_key(query: list[str]) -> str:
+    # Old keys were unordered bags without stop words. Retain them as history,
+    # but never reinterpret them as decisions about this phrase-aware query.
+    return "phrases-v1:" + " ".join(token_sequence(" ".join(query)))
+
+
+def query_features(query: list[str], groups: list[list[str]]) -> tuple[set[str], dict[str, tuple[str, ...]]]:
+    sequence = token_sequence(" ".join(query))
+    original = set(sequence) - STOP_WORDS
+    features = {term: (term,) for term in original}
+    for group in groups:
+        aliases = [token_sequence(alias) for alias in group]
+        # Trigger only from the original query, never from another expansion.
+        # In particular, "source" does not trigger "source of truth".
+        if any(contains_phrase(sequence, alias) for alias in aliases):
+            for alias in aliases:
+                if alias and (len(alias) > 1 or alias[0] not in STOP_WORDS):
+                    features[" ".join(alias)] = alias
+    return original, features
+
+
+def matching_features(features: dict[str, tuple[str, ...]], fields: list[str]) -> set[str]:
+    # A phrase must occur within one field, not across unrelated tags/title/scope.
+    sequences = [token_sequence(text) for text in fields]
+    single_words = set().union(*(set(sequence) for sequence in sequences))
+    return {label for label, phrase in features.items()
+            if (phrase[0] in single_words if len(phrase) == 1 else
+                any(contains_phrase(sequence, phrase) for sequence in sequences))}
 
 
 def retrieve(api, store, query: list[str], limit: int, scope: str | None, kind: str = "lessons", work_id: str | None = None) -> list[dict]:
     records, lessons = store.snapshot()
     api.require(kind in {"lessons", "episodes"} and 1 <= limit <= 50, "Invalid search kind or limit")
-    original = set().union(*(tokens(value) for value in query)) - STOP_WORDS
-    api.require(bool(original), "Use at least one nontrivial search term")
-    terms = set(original)
     vocabulary, _ = api.decode(api.read(store.path("memory/vocabulary.md")))
     groups = vocabulary.get("groups")
     api.require(isinstance(groups, list) and all(isinstance(g, list) and all(isinstance(t, str) for t in g) for g in groups), "Invalid vocabulary groups")
-    for group in groups:
-        expanded = set().union(*(tokens(s) for s in group)) - STOP_WORDS
-        if original & expanded:
-            terms |= expanded
+    original, features = query_features(query, groups)
+    api.require(bool(original), "Use at least one nontrivial search term")
+    terms = set(features)
     source = [v[-1] for v in lessons.values()] if kind == "lessons" else [r for r in records.values() if r[0]["kind"] == "episode"]
     docs = []
     for meta, body, path in source:
@@ -499,18 +536,18 @@ def retrieve(api, store, query: list[str], limit: int, scope: str | None, kind: 
             # Episodes have no mandatory scope field; explicit body/title filter.
             if kind != "episodes" or scope.casefold() not in (meta["title"] + " " + body).casefold():
                 continue
-        header = tokens(" ".join([meta["id"], meta["title"], meta.get("domain", ""), *meta.get("tags", []), *meta.get("aliases", []), *scopes]))
-        docs.append((meta, body, path, header, tokens(body)))
+        header = matching_features(features, [meta["id"], meta["title"], meta.get("domain", ""),
+                                              *meta.get("tags", []), *meta.get("aliases", []), *scopes])
+        docs.append((meta, body, path, header, matching_features(features, [body])))
     frequency = {term: sum(term in d[3] or term in d[4] for d in docs) for term in terms}
     rejected = set()
     if work_id:
         work, _ = read_work(api, store, work_id)
         rejected = {(r.get("record"), r.get("query")) for r in work["rejections"] if r.get("activity_revision") == work["activity_revision"]}
-    normalized_query = " ".join(sorted(original))
+    normalized_query = query_key(query)
     results = []
     for meta, body, path, header, body_terms in docs:
         matches = terms & (header | body_terms)
-        direct = original & (header | body_terms)
         if not matches or (original - GENERIC_WORDS and not (matches - GENERIC_WORDS)):
             continue  # Generic overlap alone cannot drag an unrelated lesson in.
         ref = reference(meta)
@@ -523,7 +560,7 @@ def retrieve(api, store, query: list[str], limit: int, scope: str | None, kind: 
         item = {"id": meta["id"], "kind": meta["kind"], "title": meta["title"], "matches": sorted(matches),
                 "score": round(score, 4), "path": path.relative_to(store.root).as_posix()}
         if kind == "lessons":
-            item.update(revision=meta["revision"], status=meta["status"], scope=scopes,
+            item.update(revision=meta["revision"], status=meta["status"], scope=meta["scope"],
                         path=(path.parent.parent / "current.md").relative_to(store.root).as_posix(),
                         pending_counterevidence=[k for k, r in records.items() if r[0]["kind"] == "review"
                             and r[0]["lesson"] == meta["id"] and r[0]["assessment"] == "counterexample"
@@ -540,8 +577,8 @@ def reject_candidate(api, store, identifier: str, ref: str, query: list[str], re
     work, body = read_work(api, store, identifier)
     api.require(work["status"] != "closed", "Resume workspace before recording a decision")
     api.require(ref in accepted(api, store), "Unknown accepted record/revision")
-    normalized = " ".join(sorted(set().union(*(tokens(s) for s in query)) - STOP_WORDS))
-    api.require(bool(normalized), "Supply the exact search terms being rejected")
+    api.require(bool(tokens(" ".join(query)) - STOP_WORDS), "Supply the exact search terms being rejected")
+    normalized = query_key(query)
     entry = {"record": ref, "query": normalized, "activity_revision": work["activity_revision"], "reason": field(api, reason, "rejection reason"), "at": api.now()}
     work["rejections"].append(entry)
     save_work(api, store, work, body)
