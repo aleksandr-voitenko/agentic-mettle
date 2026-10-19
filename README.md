@@ -10,7 +10,7 @@ help an agent develop through its history, not merely recall that history.
 > Can the agent make a better-informed decision because of an earlier experience,
 > recognize when its lesson does not apply, and revise it when evidence changes?
 
-**Version 0.1.1 — experimental V1 pilot.** This repository provides an operating
+**Version 0.2.0 — experimental V1 pilot.** This repository provides an operating
 protocol, a standard-library-only Python helper, runtime configuration adapters,
 record validation, and offline tests. It does not establish reliable reflective
 identity across hundreds of real conversations. Live runtime integration and
@@ -75,6 +75,39 @@ See [agent-owned learning and continuity](docs/agent-owned-learning.md) and the
 must connect the exact lesson revision to an observable decision and outcome,
 including justified non-application and contradictory evidence.
 See [the design and boundaries](docs/design.md) for how these ideas fit together.
+
+## Working state without package-root clutter
+
+**Keep ongoing activity in `state/work/W-ID/`, not beside the installed protocol.**
+Each activity has a mutable `WORK.md` handoff/publication ledger, record drafts,
+and optional artifacts. It can span sessions while the repository still has one
+personality. Bootstrap supplies compact unfinished-work pointers, not a new task.
+
+```text
+work start --title "Investigate generated interfaces" --scope "components/example"
+template episode --work W-ID
+publish PATH_RETURNED_BY_TEMPLATE
+work checkpoint W-ID
+```
+
+Use the returned work ID, fill the draft with actual evidence, and record a
+checkpoint decision before closing the activity. A bounded proposed lesson does
+not require universal proof; `defer` with a revisit trigger and `no-update` remain
+valid. The helper tracks publication, not the truth of the reflection.
+
+When lessons do not fit, **`search --kind episodes TERMS`** retrieves accepted
+observations explicitly, including correction links. Token-aware matching reduces
+incidental substring/generic matches. Scratch files and backups are never treated
+as accepted memory. New drafts can retain known session and protocol provenance;
+old unknown identities are not guessed.
+
+Existing pilots can use **`migrate-work`** to preview moving legacy root drafts,
+logs, and backups. Applying requires the reviewed `plan_id`; exact-byte backups,
+a resumable journal, and restore-originals support are included. Referenced or
+unrecognized files stay in place for inspection. Migration never rewrites accepted
+history, auto-publishes drafts, or executes archived scripts. Read the
+[workspace and migration guide](docs/workspaces.md) before applying it. Migration
+is explicit, not an automatic upgrade or age-based cleanup operation.
 
 ## What V1 includes
 
@@ -188,6 +221,9 @@ Self-model and accepted history are never reset. Placement and adapter selection
 are remembered locally for later runs.
 
 Changed existing files have exact backups; unchanged files are not rewritten.
+Backups of internal Mettle files now go under `state/backups/`; backups of project
+instruction/runtime configuration files retain their existing adjacent location.
+No backup is considered learned memory or automatically deleted.
 Malformed block markers, invalid profiles/configuration, conflicting edits, and
 oversized startup context stop installation visibly. Publication is atomic per
 file, not an all-or-nothing transaction. See [the installer guide](docs/installer.md)
@@ -205,9 +241,12 @@ existing-project/
     ├── PERSONALITY.md                     # Fixed protocol
     ├── LOCATION.md                        # Generated root/bootstrap location
     ├── REFERENCE.md                       # Record schema and workflow
+    ├── WORK_REFERENCE.md                  # Workspace and migration commands
     ├── tools/
     │   ├── mettle.py                      # Core helper
-    │   └── mettle_installer.py            # Guided setup and profile constructors
+    │   ├── mettle_installer.py            # Guided setup and profile constructors
+    │   ├── mettle_work.py                 # Workspaces, evidence, retrieval
+    │   └── mettle_migrate.py              # Explicit legacy-file migration
     ├── .gitignore                         # Excludes mutable state
     └── state/
         ├── installation.json             # Local placement/adapter choices
@@ -223,7 +262,11 @@ existing-project/
         │   │   └── revisions/0001.md
         │   ├── episodes/<year>/<month>/
         │   ├── reviews/<year>/<month>/
-        │   └── reconciliations/<year>/<month>/
+        │   ├── reconciliations/<year>/<month>/
+        │   └── evidence/<sha256>/
+        ├── work/W-ID/                     # WORK.md, drafts/, optional artifacts/
+        ├── migrations/M-ID/               # Journals and original-byte backups
+        ├── backups/                       # Internal installer/legacy backups
         └── sessions/
 ```
 
@@ -321,6 +364,11 @@ a reflection is psychologically or causally true.
 
 ## Record commands
 
+Prefer `template KIND --work W-ID` and `show ID --work W-ID`; their returned
+paths are rooted in the managed activity directory. The explicit-output examples
+below remain for compatibility outside the protected package root. Never put
+bare output drafts beside PERSONALITY.md or inside accepted memory directories.
+
 Records use JSON metadata between `---` delimiters followed by Markdown. The
 helper intentionally does not require a YAML library or accept arbitrary YAML.
 
@@ -410,7 +458,9 @@ absolute-path configurations and backups before committing. See
 [security and privacy](SECURITY.md).
 
 Lexical retrieval can miss paraphrases. Retrieval validates the local record
-graph and is linear in the memory archive; it does not scan the source tree.
+graph and ranks the chosen record collection; it does not scan the source tree.
+The current ranker computes term frequencies across candidates without a cached
+search index, so large-memory performance must be measured before scaling.
 There is no measured large-memory performance guarantee. Startup context has an
 explicit character budget and fails visibly rather than silently truncating a
 personality. Character counts are not token or billing measurements.

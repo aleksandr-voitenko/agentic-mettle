@@ -1,6 +1,6 @@
 # Agentic Mettle — V1 operating protocol
 
-Protocol version: **0.1.1**. This file is operator-maintained, not learned memory.
+Protocol version: **0.2.0**. This file is operator-maintained, not learned memory.
 The objective is appropriate behavioral development through experience, not
 merely recall, a persuasive autobiography, or a permanent personality label.
 
@@ -92,6 +92,16 @@ Reject or defer candidates that do not fit the current activity, scope, or autho
 For example, finding a publish workflow during read-only review does not permit
 running its side-effecting steps.
 
+When current lessons do not fit, explicitly use `search --kind episodes TERMS`
+to find accepted observations. Episode candidates are not instructions; read
+correction links and evidence before proposing a practice. Do not search scratch
+files or backups as if they were accepted guidance. Exact tokens and aliases
+can miss synonyms; revise search terms rather than force a match.
+For a meaningful rejection, `work reject W-ID L-ID@N --query TERMS --reason TEXT`
+can record the decision. `search --work W-ID` suppresses only that same query and
+revision in the unchanged activity; other queries or changed conditions require
+fresh consideration.
+
 Search indices and current records before deliberately investigating history.
 Never scan the entire source repository merely to discover personal lessons.
 When retrieval misses an existing useful record, document the miss and improve
@@ -150,13 +160,62 @@ does not prove that a lesson caused it or that its initial explanation was right
 
 ## Publish and reconcile
 
-Create UTF-8 drafts with `template episode --output episode-draft.md` (or the
-required record kind). This writes a new file directly without shell redirection;
-an existing output is refused. `show ID --output revision-draft.md` can also
-create a draft for revision. Publish through `publish`, using
-`--expected-revision` for lessons. Read `.agent-personality/REFERENCE.md` for the
-record schema and complete workflow. Do not edit accepted episodes, reviews,
-reconciliations, or revision files. `current.md` and indices are generated views.
+For a substantive activity, create or resume `state/work/<work-id>/` with
+`work start --title TITLE --scope SCOPE` and `work show W-ID`. A workspace spans
+sessions; it is not another personality. Keep current state, next action, and
+publication/checkpoint links through its workspace commands; WORK.md is a compact
+handoff with hash-linked ledger pages. Pause unfinished activity rather than
+silently abandon it. Bootstrap supplies bounded unfinished-work pointers, not every
+workspace or a new mandate.
+
+Keep package-root files and tools free of drafts, logs, reports, and scratch
+scripts. Use `template episode --work W-ID` (or another record kind) and
+`show L-ID --work W-ID` to create new UTF-8 drafts. For new records, supply the
+current snapshot's session ID with `--session-id` when available and runtime/model
+when known; never borrow the latest unrelated audit or backfill historical IDs.
+Review the returned draft path and metadata. Publish through `publish` with the
+expected prior revision for a lesson. Publication records the accepted ID/revision
+in the workspace ledger but retains the draft. When a filename already exists,
+a unique draft path is returned; copying a lesson does not advance its revision.
+Retry an interrupted publication only with the
+same unchanged draft; a conflicting accepted ID is not an overwrite opportunity.
+
+Temporary support belongs in the workspace's artifacts/. Before relying on it in
+accepted memory, retain an excerpt or use `work evidence W-ID PATH` to preserve
+its exact bytes and hash. Product code stays in its normal project locations.
+Workspaces, drafts, and backups are not accepted memories or additional rules.
+
+Before closing meaningful work, run `work checkpoint W-ID` and inspect its bounded
+publication packet plus related accepted experience. Decide to propose, review,
+reconcile, defer with a concrete revisit trigger, or make no learning update.
+Record the decision using checkpoint options and link the actual published
+records; intention alone is not completed reconciliation. A new relevant event
+can warrant a checkpoint before the activity ends. Do not create lesson quotas.
+One meaningful event may justify a scoped **proposed** practice; later support
+within tested conditions does not require universal validity or proof of a causal
+benefit attributable to Mettle. Separate local support, untested transfer, and
+causal attribution instead of combining all uncertainty into permanent deferral.
+Compare recurring behavior before deciding whether a tentative self-assessment
+is warranted; neither a confident trait nor an empty self-model is a target.
+
+Use `work update W-ID --status closed --next-action TEXT` after a current checkpoint
+and resolving draft differences, or `--status paused` with a useful handoff.
+A closed activity may still have a proposed lesson awaiting a future application.
+Do not publish weak evidence just to resolve a draft. Use
+`work abandon-draft W-ID drafts/FILE.md --reason TEXT` to retain it with its exact
+hash and reason, then record a fresh checkpoint. Changed bytes need reassessment.
+`work resume-draft W-ID drafts/FILE.md --reason TEXT` explicitly reopens that draft
+for publication; resume a closed workspace first. Neither decision deletes the
+file or changes accepted records. Use `work history` for older ledger entries;
+`work show` reports a bounded recent view and omitted counts.
+Closing does not delete drafts or artifacts. Never delete material merely because
+it is old or published; verify evidence dependencies first. Legacy migration is an
+explicit preview/apply operation, not normal reflection or installer cleanup.
+
+Read `.agent-personality/REFERENCE.md` for accepted records and
+`.agent-personality/WORK_REFERENCE.md` for workspace/migration commands. Do not
+edit accepted episodes, reviews, reconciliations, or revision files. Current
+lesson files and indexes are generated views.
 
 Treat reconciliation as a separate responsibility from activity execution and
 initial reflection. The same agent can perform the pass sequentially; no extra

@@ -6,10 +6,12 @@ are rejected rather than guessed. Accepted historical bytes are not rewritten
 when read or reindexed. The first block contains **JSON** between
 `---` delimiters. JSON is used to keep the helper dependency-free; arbitrary YAML
 syntax is not supported. Markdown bodies remain readable with normal tools and
-`grep`/`rg`. Run `template KIND --output draft.md` to generate a correctly shaped
-draft with a unique ID, without relying on shell redirection encoding. The
-output must be a new file; no overwrite option is provided. Omitting `--output`
-retains stdout. A draft is not accepted evidence until published.
+`grep`/`rg`. Prefer `template KIND --work W-ID` to create a correctly shaped
+draft under its activity workspace (see WORK_REFERENCE.md). The explicit
+`--output draft.md` form below remains available outside protected package
+directories; it does not rely on shell redirection encoding. Output must be a
+new file. Omitting both options retains stdout. A draft is not accepted evidence
+until published.
 
 ## Kinds
 
@@ -183,13 +185,16 @@ a multi-machine database, or an adversarially tamper-proof audit ledger.
 
 ## Retrieval and cost
 
-Search only matches current lesson content/metadata, with optional scope filters
-and small operator-editable alias groups. It does not return archived revisions
-as current advice. Safety validation may read supporting records mechanically;
-they are not all injected into model context. Search is linear in local memory,
-not the millions of lines of project code. A future index can optimize this
-without changing the protocol or record IDs. `show --revision N` is an explicit
-historical lookup, not permission to follow obsolete instructions.
+Search defaults to current lesson content/metadata, with optional scope filters
+and small operator-editable alias groups. Explicit `--kind episodes` searches
+accepted observations and reports correction links, not additional instructions.
+Neither route searches workspaces, backups, or old lesson revisions as advice.
+Safety validation may read supporting records mechanically; they are not all
+injected into model context. Retrieval scans the local record collection rather
+than the millions of lines of project code; no large-archive performance guarantee
+is claimed. A future index can optimize this without changing record IDs.
+`show --revision N` is an explicit historical lookup, not permission to follow
+obsolete instructions.
 
 A score is a lexical ranking, not confidence, truth, or measured causal utility.
 No matches is valid. Bootstrap logs character counts, not fabricated token
@@ -372,3 +377,21 @@ still a protocol discipline, not an automatically enforced versioning engine.
 guards, an external report that does not automatically validate a lesson, and
 non-task episode contexts. These are storage/protocol contracts, not evidence
 that an LLM selected an activity or learned autonomously.
+
+
+## Workspace-aware records (0.2.0)
+
+Use `template KIND --work W-ID` and `show ID --work W-ID` for mutable drafts, then
+publish their returned paths. Schema 1 and accepted revision semantics are
+unchanged. New workspace drafts can carry an optional `provenance` object with
+work ID, explicitly known session/runtime/model, protocol version, and hash.
+Old records and unknown history are not backfilled. A workspace ledger links the
+exact draft bytes to accepted IDs/revisions and supports publication retry after
+interrupted bookkeeping. It is not another accepted record kind.
+
+A scoped proposed lesson may follow one meaningful event; later local support,
+untested generalization, and causal attribution should be assessed separately.
+Activity checkpoints support that decision but cannot validate its reasoning.
+`search --kind episodes` explicitly retrieves observations when lessons do not
+fit; follow correction links and do not treat drafts as evidence. See
+[workspace and migration details](workspaces.md), installed as WORK_REFERENCE.md.
