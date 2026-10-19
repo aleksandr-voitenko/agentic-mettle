@@ -24,7 +24,8 @@ memory schema. Normal learning remains agent-owned within its existing mandate.
     ├── work/
     │   ├── INDEX.md               # Generated navigation, not instructions
     │   └── W-<id>/
-    │       ├── WORK.md            # Mutable handoff, checkpoint/publication ledger
+    │       ├── WORK.md            # Compact mutable handoff and ledger heads
+    │       ├── ledger/            # Hash-linked operational history pages
     │       ├── drafts/            # Record drafts, created only when needed
     │       └── artifacts/         # Temporary reports/logs/scripts, never auto-run
     ├── migrations/M-<id>/         # Local migration journal and original bytes
@@ -72,8 +73,10 @@ helper path. For source commands, root precedes the work subcommand:
 Other commands accept their existing `--root` option.
 
 `template ... --work ID` and `show ID --work W-ID` (alias `--output-work`) create
-new files in `drafts/`; they never overwrite. `show` copies the accepted revision
-as-is: explicitly edit a lesson draft's next revision and preserve its metadata
+new files in `drafts/`; they never overwrite. If the usual ID/revision filename
+already exists, a unique `-draft-<suffix>` is added. Always use the returned path:
+the previous working copy and its publication links are retained. `show` copies
+the accepted revision as-is: explicitly edit a lesson draft's next revision and preserve its metadata
 before publishing with `--expected-revision N`. The normal explicit `--output`
 and stdout forms remain supported, but managed draft output is refused in the
 package root, tools, personality, and accepted-memory directories.
@@ -86,7 +89,8 @@ placeholders in the example as if they were real provenance. Existing accepted
 records, timestamps, and unknown historical sessions are never backfilled.
 
 Publication from a managed workspace records the exact draft hash, accepted ID
-and revision, accepted path, and accepted hash in WORK.md. Drafts are retained.
+and revision, accepted path, and accepted hash in the workspace publication
+ledger linked from WORK.md. Drafts are retained.
 If record publication succeeds but ledger updating is interrupted, rerun
 `publish` on the same unchanged draft. The helper verifies that its content
 matches the accepted record before repairing the ledger, without duplicating the
@@ -98,6 +102,53 @@ WORK.md uses JSON frontmatter and editable Markdown notes. Use commands for
 managed fields. Its contents are operational data, not accepted memory or
 instructions. Helpers serialize mutations with the store lock; direct edits and
 independent concurrent sessions are not coordinated by that convention.
+
+### Bounded manifests and retained history
+
+Workspace storage format **2** keeps only handoff fields and ledger heads/counts
+in WORK.md. Publications, evidence links, rejections, checkpoints, and draft
+decisions live in content-addressed pages under `ledger/`, linked to older pages.
+Each generated page is at most 32,000 UTF-8 bytes. All pages and the complete
+manifest are size-checked before writing; an oversized handoff or single ledger
+entry leaves the previous readable manifest unchanged. No history is truncated.
+
+New pages are published before the manifest switches heads atomically. An
+interruption can leave unreferenced pages, which are retained, but cannot make a
+successful manifest refer to a partly written page. A failed generated-index
+update is still repaired by `reindex --repair`. This is not a power-loss-safe or
+hostile-concurrent-editor transaction. Page hashes detect changed bytes, not
+incorrect reasoning. Normal operations can read the full history internally;
+this is not a constant-time large-history performance claim.
+
+Bootstrap and navigation read direct workspace headers, not historical pages or
+recursive scratch directories. The generated work index is bounded and reports
+omissions. `work list --offset 0 --limit 50` paginates unfinished activities; follow
+its `next_offset` for later pages. `work show` displays at most ten recent entries per ledger and explicit
+counts; use `work history W-ID --kind checkpoints --offset 0 --limit 20` for a
+page of earlier entries. Other kinds are `publications`, `evidence`, `rejections`,
+and `draft_decisions`. Follow `next_offset` until it is null. This command does
+not load those entries as startup instructions or change the workspace.
+
+Legacy workspace format 1 remains readable and is converted when next saved,
+preserving its entries and notes. **Accepted record schema remains 1.** Older
+helpers do not understand workspace format 2; do not downgrade over a converted
+workspace without restoring a complete pre-upgrade snapshot.
+
+If an earlier helper already wrote an oversized WORK.md, normal reads/install
+preflight can fail. With all writers stopped and a complete backup retained, run
+from the new source before installing it:
+
+```text
+python mettle.py work --root /absolute/project repair-storage W-ID
+```
+
+On PowerShell use the selected interpreter, `-X utf8`, and the same arguments.
+This explicit command accepts a legacy manifest up to 16 MB, validates it, retains
+its **exact original bytes** under `ledger/legacy/<sha256>.md`, and converts the
+ledger without changing accepted memories or activity decisions. It refuses
+malformed input, oversized handoff text, or an already-current format rather than
+resetting data. Complete normal installation of the new helper before restarting
+an agent; do not resume the older installed helper against converted state.
 
 ## Learning checkpoint, not a lesson quota
 
@@ -126,12 +177,42 @@ single success. `no-update` and a concrete deferred review are valid outcomes.
 Never manufacture episodes, recurrence, success, or a self-assessment to complete
 a checklist.
 
-Closing requires a checkpoint for the current activity revision and no changed
-or untracked draft files. A new helper-created draft/publication or reopening
+Closing requires a checkpoint for the current activity revision and every
+remaining draft to match a published copy or an explicit abandonment decision.
+A new helper-created draft/publication, abandonment/resumption, or reopening
 invalidates the old checkpoint. Pause instead of discarding unresolved work.
 A completed activity may still have a proposed lesson awaiting a future case.
 The current closure gate cannot detect semantic changes in directly edited
 artifact/Markdown notes; inspect them explicitly. Closing does not delete files.
+
+### Retain a draft without publishing weak evidence
+
+Use `work abandon-draft` when a speculative or rejected draft should not become
+an accepted record. The file stays where it is; its path, exact byte hash, reason,
+and activity revision are recorded. A fresh checkpoint can then close the work
+without manufacturing a lesson or episode:
+
+```text
+work abandon-draft W-ID drafts/E-ID.md --reason "The investigation does not justify this record"
+work checkpoint W-ID --decision no-update --reason "No supported update; the draft is retained as abandoned"
+work update W-ID --status closed --next-action "No outstanding investigation"
+```
+
+The draft argument may be workspace-relative (`drafts/...`) or its actual absolute
+path. It must belong to that workspace. Editing an abandoned file invalidates the
+old hash-based closure decision. Reassess it instead of pretending it is resolved.
+Publishing an abandoned path is blocked until explicitly resumed:
+
+```text
+work update W-ID --status open --next-action "Reconsider the retained draft"
+work resume-draft W-ID drafts/E-ID.md --reason "New evidence makes further work useful"
+```
+
+Both decisions stay in the ledger. Resumption does not overwrite bytes or publish
+the draft, and requires a later checkpoint before closure. Abandonment never
+retires or erases an already accepted record; use the accepted lesson-revision
+protocol for that. These are agent-owned working decisions within existing
+permissions, not a routine human approval gate or a general deletion command.
 
 ## Evidence and selective retrieval
 
@@ -196,7 +277,10 @@ working copy, **never counted as independent experience or auto-published**.
 Different/unpublished content is retained as ongoing work, not discarded.
 
 Available `.agent-personality` text is scanned conservatively for filename
-references. Referenced files remain at their old paths, listed under `kept`.
+references. Filename comparison is conservatively case-insensitive on every
+host, including POSIX review of a Windows-origin archive; actual filenames and
+bytes retain their spelling. Referenced files remain at their old paths, listed
+under `kept`. Some false-positive retention is preferable to breaking evidence.
 This avoids rewriting accepted evidence to accommodate tidying. Files outside
 this private tree, excluded binary files, and external conversations are not
 fully inspectable; there is no universal reference-resolution guarantee. A
@@ -204,6 +288,13 @@ non-UTF-8 possible reference file or excessive scan size stops migration rather
 than silently ignoring it. Unknown activity attribution is kept unknown: migrated
 work goes into one explicitly labelled paused **legacy-import workspace**.
 Backups go to `state/backups/legacy-...`, not memory.
+
+Preview and apply reserve the size of the **fully completed journal**, including
+all completion paths and the finishing timestamp, before allowing relocation.
+Plans that would exceed the 128,000-byte journal limit fail before any move;
+review/split the input manually instead of raising the limit blindly. This is a
+bounded migration tool, not an unlimited archive manager. Resuming an older plan
+also checks its completed size before moving any additional file.
 
 Before any move, the script writes a journal in `state/migrations/M-ID/`. Each
 source is copied to `originals/<old-relative-path>`, verified, copied to its new
@@ -231,7 +322,8 @@ records. An edited journal or changed file stops recovery for inspection.
 Publication is atomic per file, not a power-loss-safe multi-file transaction or
 protection against hostile concurrent edits.
 
-To preview restoring the original paths after a completed migration:
+To preview restoring original paths after a completed **or interrupted** migration
+(including an older plan whose completion journal would now be too large):
 
 ```text
 migrate-work --restore M-ID
@@ -240,8 +332,17 @@ migrate-work --restore M-ID --apply
 
 Restore copies originals from verified backups, refusing different content now
 occupying an original path. It **retains migrated copies and newer work** rather
-than deleting them in an attempted global rollback. A restore can be repeated.
-A restored migration is not resumed as if it were still moving files.
+than deleting them in an attempted global rollback. Unmoved originals may not yet
+have backups: they must match their planned hashes and are left untouched. Every
+missing original must have a verified backup. Preflight checks every entry before
+restoring any source. The preview reports `copies_needed` separately from all
+planned original paths.
+
+Restoration does **not** require first completing relocation. It uses compact JSON
+for the same journal data so an older near-full journal can record recovery
+without dropping its plan or completion history. Restore can be repeated after
+its own interruption; conflicting original content or damaged backups still fail
+visibly. A restored migration cannot be resumed as if it were still moving files.
 
 Migration plans/journals/backups are private data. Retain them for the next pilot
 review. They map old paths to new ones and preserve the installed protocol hash

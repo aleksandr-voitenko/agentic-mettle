@@ -163,8 +163,9 @@ does not prove that a lesson caused it or that its initial explanation was right
 For a substantive activity, create or resume `state/work/<work-id>/` with
 `work start --title TITLE --scope SCOPE` and `work show W-ID`. A workspace spans
 sessions; it is not another personality. Keep current state, next action, and
-publication/checkpoint links in its WORK.md; pause unfinished activity rather
-than abandon it. Bootstrap supplies bounded unfinished-work pointers, not every
+publication/checkpoint links through its workspace commands; WORK.md is a compact
+handoff with hash-linked ledger pages. Pause unfinished activity rather than
+silently abandon it. Bootstrap supplies bounded unfinished-work pointers, not every
 workspace or a new mandate.
 
 Keep package-root files and tools free of drafts, logs, reports, and scratch
@@ -174,7 +175,9 @@ current snapshot's session ID with `--session-id` when available and runtime/mod
 when known; never borrow the latest unrelated audit or backfill historical IDs.
 Review the returned draft path and metadata. Publish through `publish` with the
 expected prior revision for a lesson. Publication records the accepted ID/revision
-in WORK.md but retains the draft. Retry an interrupted publication only with the
+in the workspace ledger but retains the draft. When a filename already exists,
+a unique draft path is returned; copying a lesson does not advance its revision.
+Retry an interrupted publication only with the
 same unchanged draft; a conflicting accepted ID is not an overwrite opportunity.
 
 Temporary support belongs in the workspace's artifacts/. Before relying on it in
@@ -198,6 +201,13 @@ is warranted; neither a confident trait nor an empty self-model is a target.
 Use `work update W-ID --status closed --next-action TEXT` after a current checkpoint
 and resolving draft differences, or `--status paused` with a useful handoff.
 A closed activity may still have a proposed lesson awaiting a future application.
+Do not publish weak evidence just to resolve a draft. Use
+`work abandon-draft W-ID drafts/FILE.md --reason TEXT` to retain it with its exact
+hash and reason, then record a fresh checkpoint. Changed bytes need reassessment.
+`work resume-draft W-ID drafts/FILE.md --reason TEXT` explicitly reopens that draft
+for publication; resume a closed workspace first. Neither decision deletes the
+file or changes accepted records. Use `work history` for older ledger entries;
+`work show` reports a bounded recent view and omitted counts.
 Closing does not delete drafts or artifacts. Never delete material merely because
 it is old or published; verify evidence dependencies first. Legacy migration is an
 explicit preview/apply operation, not normal reflection or installer cleanup.

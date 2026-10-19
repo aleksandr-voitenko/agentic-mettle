@@ -149,10 +149,12 @@ def plan_unlocked(api, store) -> dict:
             api.require(False, f"Cannot check references in non-UTF-8 file: {rel}")
         texts.append((rel, text))
     moves = []
+    # Be conservative even on POSIX: the archive may have been authored on a
+    # case-insensitive Windows checkout. Preserve original spelling and bytes.
     for entry in candidates:
         name = Path(entry["source"]).name
         refs = [rel for rel, text in texts if rel != entry["source"]
-                and re.search(r"(?<![\w.-])" + re.escape(name) + r"(?![\w.-])", text)]
+                and re.search(r"(?<![\w.-])" + re.escape(name.casefold()) + r"(?![\w.-])", text.casefold())]
         if refs:
             kept.append({**entry, "reason": "Referenced in available state; preserve original path", "references": refs})
         else:
@@ -167,11 +169,14 @@ def plan_unlocked(api, store) -> dict:
         entry["destination"] = prefix + "/" + entry["source"]
         destination = api.safe_path(store.root, api.PACKAGE + "/" + entry["destination"])
         api.require(not destination.exists(), f"Migration destination already exists: {destination}")
-    return {**seed, "id": identifier, "work_id": workspace, "plan_id": token,
+    result = {**seed, "id": identifier, "work_id": workspace, "plan_id": token,
             "warnings": ["Stop all agents/writers and keep a full pre-upgrade archive before applying.",
                          "Only available .agent-personality text is checked for references; external references are unknown.",
                          "Referenced/unknown files stay in place. No accepted memory or Git index is rewritten.",
                          "Relocation copies exact bytes to backup and destination before unlinking the old file; no history is deleted."]}
+    if moves:
+        journal_capacity(api, new_journal(api, result))
+    return result
 
 
 def journal_path(api, store, identifier: str) -> Path:
@@ -179,9 +184,32 @@ def journal_path(api, store, identifier: str) -> Path:
     return store.path("migrations/" + identifier + "/manifest.json")
 
 
-def put_journal(api, path: Path, journal: dict) -> None:
-    # The plan is never recomputed from a partially migrated tree.
-    text = json.dumps(journal, ensure_ascii=False, indent=2) + "\n"
+def journal_text(journal: dict, *, compact: bool = False) -> str:
+    return json.dumps(journal, ensure_ascii=False, indent=None if compact else 2,
+                      separators=(",", ":") if compact else None) + "\n"
+
+
+def new_journal(api, plan: dict) -> dict:
+    return {"schema": 1, "id": plan["id"], "status": "applying", "started_at": api.now(),
+            "plan": plan, "plan_sha256": fingerprint(plan), "completed": []}
+
+
+def journal_capacity(api, journal: dict) -> int:
+    # Reserve every future completion plus the finishing timestamp BEFORE moving
+    # any file. The longest terminal/transitional statuses have nine characters.
+    full = {**journal, "status": "completed", "completed": [e["source"] for e in journal["plan"]["moves"]],
+            "finished_at": journal.get("finished_at", "9999-12-31T23:59:59+00:00")}
+    size = len(journal_text(full).encode("utf-8"))
+    api.require(size <= api.MAX_RECORD,
+                f"Completed migration manifest would need {size} bytes (limit {api.MAX_RECORD}); no further files moved. "
+                "Review/split the migration input manually. For an interrupted older migration, use --restore ID to preview recovery without completing it.")
+    return size
+
+
+def put_journal(api, path: Path, journal: dict, *, compact: bool = False) -> None:
+    # The plan is never recomputed from a partially migrated tree. Compact JSON
+    # gives old near-full journals a recovery path without dropping any history.
+    text = journal_text(journal, compact=compact)
     api.require(len(text.encode("utf-8")) <= api.MAX_RECORD, "Migration manifest exceeds the supported size; inspect/split manually")
     api.write_atomic(path, text)
 
@@ -207,6 +235,9 @@ def load_journal(api, store, identifier: str) -> tuple[Path, dict]:
         api.require(entry["destination"] == prefix + "/" + entry["source"], "Migration destination does not match its original plan layout")
         api.require(dst[:2] in {("state", "work"), ("state", "backups")}, "Unsafe destination in migration journal")
         api.require(re.fullmatch(r"[0-9a-f]{64}", entry["sha256"] or ""), "Invalid migration digest")
+    sources = [e["source"] for e in p["moves"]]
+    api.require(len(set(sources)) == len(sources) and all(isinstance(x, str) and x in sources for x in journal["completed"])
+                and len(set(journal["completed"])) == len(journal["completed"]), "Invalid migration completion entries")
     # Detect accidental journal editing. This is integrity, not authentication.
     api.require(journal.get("plan_sha256") == fingerprint(p), "Migration plan was edited; inspect backups instead of guessing")
     return path, journal
@@ -227,6 +258,7 @@ def resume(api, store, identifier: str) -> dict:
     api.require(journal["status"] in {"applying", "completed"}, "Migration is restoring/restored; do not resume moves")
     if journal["status"] == "completed":
         return {"id": identifier, "status": "completed", "moved": len(journal["completed"])}
+    journal_capacity(api, journal)  # Older interrupted plans must also fit before further relocation.
     p = journal["plan"]
     api.require(protected(api, store) == p["protected"], "Accepted history/profile/evidence changed during migration; inspect before resuming")
     # Preflight every remaining original, backup, and destination before moves.
@@ -293,35 +325,48 @@ def apply(api, store, expected: str) -> dict:
             return {"status": "nothing-to-move", "kept": p["kept"]}
         path = journal_path(api, store, p["id"])
         api.require(not path.parent.exists(), "Migration journal already exists; inspect or resume it")
-        journal = {"schema": 1, "id": p["id"], "status": "applying", "started_at": api.now(),
-                   "plan": p, "plan_sha256": fingerprint(p), "completed": []}
-        text = json.dumps(journal, ensure_ascii=False, indent=2) + "\n"
-        api.require(len(text.encode("utf-8")) <= api.MAX_RECORD, "Migration manifest exceeds supported size; nothing moved")
+        journal = new_journal(api, p)
+        journal_capacity(api, journal)
+        text = journal_text(journal)
         api.write_atomic(path, text, exclusive=True)
         return resume(api, store, p["id"])
 
 
 def restore(api, store, identifier: str, perform: bool) -> dict:
     path, journal = load_journal(api, store, identifier)
-    api.require(journal["status"] in {"completed", "restoring", "restored"}, "Finish/resume the interrupted migration before restoring originals")
-    entries = journal["plan"]["moves"]
+    api.require(journal["status"] in {"applying", "completed", "restoring", "restored"}, "Unknown migration status")
+    entries, missing = journal["plan"]["moves"], []
+    # Recovery is independent of relocation completion. Unmoved originals may
+    # have no backup yet; a missing original ALWAYS requires its verified backup.
     for entry in entries:
         source = api.safe_path(store.root, api.PACKAGE + "/" + entry["source"])
         backup = store.path(f"migrations/{identifier}/originals/" + entry["source"])
-        api.require(work.sha(read_bytes(api, backup)) == entry["sha256"], f"Backup changed: {backup}")
+        if backup.exists():
+            api.require(work.sha(read_bytes(api, backup)) == entry["sha256"], f"Backup changed: {backup}")
         if source.exists():
             api.require(work.sha(read_bytes(api, source)) == entry["sha256"], f"Original path now has different content: {source}")
+        else:
+            api.require(backup.is_file(), f"Missing original and verified backup: {source}")
+            missing.append(entry["source"])
+    recovering = {**journal, "status": "restoring"}
+    api.require(len(journal_text(recovering, compact=True).encode("utf-8")) <= api.MAX_RECORD,
+                "Recovery manifest exceeds capacity; preserve all copies for manual recovery")
     if not perform:
-        return {"id": identifier, "restore": [e["source"] for e in entries], "writes": False,
-                "note": "Restores original paths from backups; retains migrated copies and any newer work."}
-    journal["status"] = "restoring"
-    put_journal(api, path, journal)
+        return {"id": identifier, "restore": [e["source"] for e in entries], "copies_needed": missing, "writes": False,
+                "note": "Restores verified original paths even after partial migration; retains migrated copies and newer work."}
+    put_journal(api, path, recovering, compact=True)
+    copied = 0
     for entry in entries:
-        exact_copy(api, store.path(f"migrations/{identifier}/originals/" + entry["source"]),
-                   api.safe_path(store.root, api.PACKAGE + "/" + entry["source"]), entry["sha256"])
-    journal["status"] = "restored"
-    put_journal(api, path, journal)
-    return {"id": identifier, "status": "restored", "restored": len(entries), "migrated_copies_retained": True}
+        source = api.safe_path(store.root, api.PACKAGE + "/" + entry["source"])
+        if source.exists():
+            api.require(work.sha(read_bytes(api, source)) == entry["sha256"], f"Original path changed while restoring: {source}")
+        else:
+            exact_copy(api, store.path(f"migrations/{identifier}/originals/" + entry["source"]), source, entry["sha256"])
+            copied += 1
+    recovering["status"] = "restored"
+    put_journal(api, path, recovering, compact=True)
+    return {"id": identifier, "status": "restored", "restored": len(entries), "copied": copied,
+            "migrated_copies_retained": True}
 
 
 def add_parser(sub) -> None:
