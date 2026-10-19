@@ -1,6 +1,6 @@
 # Activity workspaces, retrieval, and safe legacy migration
 
-Version **0.2.0**, within the experimental V1 pilot. This adds working-state
+Version **0.2.1**, within the experimental V1 pilot. This adds working-state
 management, not another personality, an autonomous scheduler, or a new accepted
 memory schema. Normal learning remains agent-owned within its existing mandate.
 
@@ -162,8 +162,9 @@ work update W-ID --status closed --next-action "Implementation complete; the les
 With no decision, checkpoint returns a bounded packet of this activity's published
 records and questions to inspect. Use `--limit` (1–30) and the publication ledger
 for omitted items. Also search related accepted memory; this is not a complete
-historical analysis or an automated model judgment. The agent chooses `propose`,
-`review`, `reconcile`, `defer`, or `no-update`, with an explicit reason. Proposal
+historical analysis or an automated model judgment. The agent separately considers experience retention, practice learning, and
+self-assessment, then chooses `propose`, `review`, `reconcile`, `defer`, or
+`no-update`, with an explicit reason. Proposal
 and review decisions must reference the appropriate accepted records. A completed
 reconciliation must reference both its reconciliation record and a linked lesson
 revision; intent alone does not count as a published update. These structural
@@ -184,6 +185,36 @@ invalidates the old checkpoint. Pause instead of discarding unresolved work.
 A completed activity may still have a proposed lesson awaiting a future case.
 The current closure gate cannot detect semantic changes in directly edited
 artifact/Markdown notes; inspect them explicitly. Closing does not delete files.
+
+### Retain useful experience without inventing a lesson
+
+A concrete finding, inspected revision-specific behavior, correction, or coverage
+limit may be worth preserving even when it supplies no new reusable practice.
+Check whether an accepted episode already captures it. Retain useful new details
+with source references, inspected versions, and uncertainty; distinguish reported
+results from local execution. A routine turn or duplicate need not create a record.
+
+The existing commands already support an episode-only outcome:
+
+```text
+template episode --work W-ID
+# Fill the returned draft with the observation, evidence, interpretation and limits.
+publish PATH_RETURNED_BY_TEMPLATE
+work checkpoint W-ID --decision no-update --reason "Useful observation retained; no lesson or self-assessment change warranted" --records E-ID
+work update W-ID --status closed --next-action "Investigation complete"
+```
+
+Replace W-ID/E-ID with the actual workspace and published episode IDs. Here
+`no-update` means **no further lesson or self-model change**, not "no files were
+written" or "nothing useful happened." The episode remains searchable through
+`search --kind episodes`; closed-work notes alone are not that retrieval layer.
+An activity with nothing useful to retain can still close with `no-update` and
+no record references. A missing accepted ID is still rejected, and an episode
+does not satisfy a `propose`, `review`, or `reconcile` checkpoint's existing gates.
+
+This is a clarification of the operating protocol, not a new record kind, a
+mandatory three-field form, a human approval queue, or automatic episode creation.
+Existing checkpoint reasons/decisions are retained as written, not reclassified.
 
 ### Retain a draft without publishing weak evidence
 
@@ -230,15 +261,36 @@ explicit fallback when those lessons do not fit. Episodes return their status as
 record and its corrections before using it. Workspaces, drafts, backups, evidence
 blobs, and old lesson revisions are not searched as current guidance.
 
-Matching now uses complete lexical tokens (preserving compound API identifiers),
-operator vocabulary aliases, and reduced weights for generic terms. For a query
+Matching uses complete lexical tokens (preserving compound API identifiers),
+phrase-aware vocabulary aliases, and reduced weights for generic terms. An alias
+group activates only when one complete entry occurs in the original query.
+For example, `source of truth` requires those adjacent words in that order,
+including `of`; `source`, `source truth`, and `truth of source` do not activate it.
+Single-token aliases such as `acl` still activate their groups.
+
+Matching is case-insensitive and normalizes separating whitespace/punctuation.
+`search "source of truth"` and `search source of truth` are equivalent. Compounds
+such as `source_of_truth` and `source-of-truth` remain distinct single tokens;
+configure them explicitly as aliases when desired. Expansion is non-transitive:
+words introduced by one group do not activate another group. Expanded phrases
+must match a full phrase within a record field, not a partial constituent or a
+join across unrelated metadata fields. Returned `matches` retain the phrase.
+Original query words still participate in lexical ranking; this is not an
+exact-phrase filter for the entire search or a semantic-relevance guarantee.
+
+The existing vocabulary format is unchanged and custom vocabularies are kept. For a query
 containing a distinctive term, generic overlap alone is insufficient. There are
 no embeddings or guarantees of semantic recall. Inspect missed synonyms and
 improve aliases rather than treating a numeric rank as confidence.
 
 `work reject W-ID L-ID@N --query TERMS --reason REASON` records a scoped decision.
 `search --work W-ID ...` suppresses only that exact normalized query and revision
-while the activity revision is unchanged. Changed queries, new lesson revisions,
+while the activity revision is unchanged. As of 0.2.1, query keys preserve order
+and stop words so distinct phrases cannot share a rejection. Legacy unordered
+keys remain in the ledger but do not suppress new searches: reconsider the
+candidate and record a new rejection when appropriate, rather than guessing the
+old phrase. Quoted/split arguments and case/whitespace normalize consistently.
+Changed queries, new lesson revisions,
 new activity revisions, and ordinary search without `--work` reconsider it.
 Rejection is not permanent deletion or proof that the lesson is wrong.
 
