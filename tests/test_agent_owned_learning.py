@@ -214,8 +214,8 @@ class AgentOwnedLearningTest(unittest.TestCase):
         self.assertTrue(all(entry[0]["schema"] == 1 for entry in records.values()))
 
     def test_install_does_not_seed_experience_or_reset_existing_handoff(self):
-        # A runner/agent may retain a private continuity note in the existing
-        # sessions directory. Preservation is not automatic loading or scheduling.
+        # Preserve legacy handoffs in sessions during upgrades. New continuity
+        # belongs in work/WORK.md; preservation does not imply automatic loading.
         handoff = self.store.path("sessions/pending-investigation.md")
         note = b"# Pending question\nInvestigate within current permission; wait if no suitable opportunity.\n"
         handoff.write_bytes(note)

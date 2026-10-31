@@ -10,7 +10,7 @@ help an agent develop through its history, not merely recall that history.
 > Can the agent make a better-informed decision because of an earlier experience,
 > recognize when its lesson does not apply, and revise it when evidence changes?
 
-**Version 0.2.1 — experimental V1 pilot.** This repository provides an operating
+**Version 0.3.0 — experimental release.** This repository provides an operating
 protocol, a standard-library-only Python helper, runtime configuration adapters,
 record validation, and offline tests. It does not establish reliable reflective
 identity across hundreds of real conversations. Live runtime integration and
@@ -62,19 +62,51 @@ See [agent-owned learning and continuity](docs/agent-owned-learning.md) and the
 
 ## Design ideas at a glance
 
-| Idea | Immediate value | V1 form |
+| Idea | Immediate value | Current implementation |
 |---|---|---|
 | Selective reflection | Keep meaningful successes, surprises, and corrections—not a diary of every turn. | Agent protocol; no update is valid. |
 | Lexical retrieval | Find relevant experience using exact terms, tags, and aliases. | Local keyword search; no embedding service required. |
 | Progressive disclosure | Load orientation first, then only the detail needed for a decision. | Compact map → domain index/current lesson → evidence. |
 | Task-scoped knowledge | Avoid transferring a lesson to the wrong component or situation. | Explicit scope, triggers, exceptions, and source references. |
 | Separate consolidation role | Compare evidence before revising durable guidance. | An agent-owned reconciliation pass; no routine human approval queue or background worker. |
-| Procedural skill generation | Turn recurring, supported workflows into reusable steps. | Procedural lesson bodies; standalone skill packages remain outside V1. |
+| Procedural skill generation | Turn recurring, supported workflows into reusable steps. | Procedural lesson bodies; standalone skill packages remain outside the current scope. |
 
 **Retrieval discovers candidates; it does not authorize actions.** Later reviews
 must connect the exact lesson revision to an observable decision and outcome,
 including justified non-application and contradictory evidence.
 See [the design and boundaries](docs/design.md) for how these ideas fit together.
+
+## Working continuity without a transaction system
+
+**Save results so far during the activity, not only when closing it.** The same
+WORK.md handoff preserves purpose, observed progress, uncertainty, related work,
+partial outputs, actual commitments, and the next useful action. Update after
+meaningful findings or changes of direction, and before returning control when
+the saved account would otherwise be materially outdated. A conversation going
+quiet is not evidence that its activity completed or was cancelled.
+
+```text
+work update W-ID --summary "Configuration ruled out; lifetime still uncertain" --notes "Observed: configuration matches. Hypothesis: callback outlives owner. Next: inspect ownership; no fix established." --next-action "Inspect callback ownership"
+work list --status all --query callback
+work list --status closed
+```
+
+Use the actual work ID. `--notes-file` accepts a UTF-8 input instead of `--notes`;
+WORK.md remains authoritative. Progress saves require no learning record or
+checkpoint. Close a bounded activity when delivered or deliberately ended, not
+because of silence; record the outcome and limitations, then take the existing
+learning checkpoint. Closed does not necessarily mean successful.
+
+Fresh sessions use saved notes as orientation and recheck current resources.
+Some unsaved work or partial results may be lost. This does not introduce timers,
+a remote-action journal, execution replay, or exactly-once guarantees. Local
+project work and participation in Loom use the same mechanism, with ordinary links
+rather than Loom-specific storage. See the [workspace guide](docs/workspaces.md#working-continuity-and-outcomes).
+
+Upgrade normally from this source, preserving profiles. Existing migrated 0.2.1
+installations need no additional migration or reset. The release version is
+**0.3.0**; accepted-record schema 1 and workspace format 2 are unchanged. Internal
+format identifiers remain distinct from the removed product-stage label.
 
 ## Working state without package-root clutter
 
@@ -116,7 +148,7 @@ history, auto-publishes drafts, or executes archived scripts. Read the
 [workspace and migration guide](docs/workspaces.md) before applying it. Migration
 is explicit, not an automatic upgrade or age-based cleanup operation.
 
-## What V1 includes
+## What Mettle includes
 
 - **Guided installation:** preview changes, choose a role and working style, and
   enable the protocol through a managed root `AGENTS.md` block; equivalent flags
@@ -132,11 +164,13 @@ is explicit, not an automatic upgrade or age-based cleanup operation.
 - **Controlled reconciliation:** explicit decisions and new revisions rather
   than repeated whole-history rewrites. No automatic model calls or embeddings.
 
-**V1 never promotes learned lessons into `AGENTS.md`, `CLAUDE.md`,
-`PERSONALITY.md`, or runtime instruction configuration.** An operator-approved
-installer block can enable the fixed protocol in root `AGENTS.md`; it contains
-no learned lessons. Other root instructions, `CLAUDE.md`, and component instruction
-files are preserved. Reconciliation does not change this activation block.
+**Learned guidance may be maintained only in explicitly authorized owned
+instruction sections**, with source lesson/revision references and traceable
+changes. This is not automatic promotion or permission to modify the fixed
+protocol/tools, runtime permissions, unrelated instructions, or the installer's
+activation block. Installation preserves content outside its owned block. Ordinary
+permitted learning needs no additional approval queue; actual operator restrictions
+still apply.
 
 ## Quick start
 
@@ -530,10 +564,10 @@ software interfaces can change.
 | [ReasoningBank](https://arxiv.org/abs/2509.25140) · [code](https://github.com/google-research/reasoning-bank) | Distills strategies from successful and failed attempts and retrieves them for subsequent tasks. | Task-performance evidence, not persistent identity. Its released memory loop is not our full revision/counterevidence model. |
 | [Reflexion](https://arxiv.org/abs/2303.11366) | Stores feedback-derived verbal reflections to improve later attempts without weight updates. | Repeated-attempt learning does not establish development across hundreds of independent conversations. |
 | [ExpeL](https://arxiv.org/abs/2308.10144) · [code](https://github.com/LeapLabTHU/ExpeL) | Extracts and revises insights through explicit agreement, addition, editing, and removal operations. | Inspires explicit reconciliation; Mettle retires or supersedes evidence-backed records rather than silently erasing them. |
-| [Agent Workflow Memory](https://arxiv.org/abs/2409.07429) · [code](https://github.com/zorazrw/agent-workflow-memory) | Abstracts reusable workflows from experience, including recurring subtasks. | Inspires action-level retrieval; a workflow engine is outside V1. |
+| [Agent Workflow Memory](https://arxiv.org/abs/2409.07429) · [code](https://github.com/zorazrw/agent-workflow-memory) | Abstracts reusable workflows from experience, including recurring subtasks. | Inspires action-level retrieval; a workflow engine is outside the current scope. |
 | [Dynamic Cheatsheet](https://aclanthology.org/2026.eacl-long.333/) · [code](https://github.com/suzgunmirac/dynamic-cheatsheet) | Maintains evolving strategies and reusable methods across sequential problems. | Recurring benchmark families and model-dependent effects are not general lifetime validation. |
 | [Agentic Context Engineering — ACE](https://arxiv.org/abs/2510.04618) | Separates generation, reflection, and curation; uses localized playbook updates. | Inspires stable records and incremental changes, not automatic rewriting of project instructions. |
-| [MemRL](https://arxiv.org/abs/2601.03192) | Combines semantic relevance with feedback-derived utility for memory retrieval. | Relevance and usefulness differ. V1 records applications but does not implement reinforcement learning or utility optimization. |
+| [MemRL](https://arxiv.org/abs/2601.03192) | Combines semantic relevance with feedback-derived utility for memory retrieval. | Relevance and usefulness differ. Mettle records applications but does not implement reinforcement learning or utility optimization. |
 | [Evo-Memory / ReMem](https://arxiv.org/abs/2511.20857) | Studies sequential experience reuse and active refinement of an evolving memory. | Informs ordering, failure-contamination, and distribution-shift tests. |
 
 ### Persistent agents, self-models, and memory architectures
@@ -567,7 +601,7 @@ software interfaces can change.
 
 ### MBTI work considered, not adopted
 
-MBTI is not part of V1. The earlier discussion included
+MBTI is not part of Mettle. The earlier discussion included
 [Do LLMs Possess a Personality?](https://arxiv.org/abs/2307.16180),
 [Machine Mindset](https://arxiv.org/abs/2312.12999),
 [Open Models, Closed Minds?](https://arxiv.org/abs/2401.07115),

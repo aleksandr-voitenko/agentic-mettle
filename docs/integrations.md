@@ -171,7 +171,7 @@ Sources: [Claude hooks](https://code.claude.com/docs/en/hooks),
 [Claude instruction discovery](https://code.claude.com/docs/en/memory).
 
 The stdout contract is exercised locally with synthetic event payloads. A fork
-shares the one personality; V1 still requires a single authoritative writer.
+shares the one personality; Mettle still requires a single authoritative writer.
 Do not use forks as simultaneous independent personalities.
 
 ## OpenCode
@@ -208,7 +208,7 @@ records and does not change the shared reflection protocol.
 
 This integration loads instructions, **not the mutable state by itself**. The
 agent must run the supplied bootstrap command and consume its tool result.
-Reinitialization after compaction is a protocol obligation in V1, not a claimed
+Reinitialization after compaction is a protocol obligation in the current release, not a claimed
 native post-compaction guarantee. This is a deliberately weaker integration than
 a verified SessionStart hook. Test it explicitly. No experimental OpenCode plugin
 is installed. Its documented experimental compaction hook changes summarizer

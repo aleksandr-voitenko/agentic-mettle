@@ -148,9 +148,13 @@ Edited contents inside a valid managed block are replaced: put your independent
 instructions outside it. `skip` means do not edit the file; it does not remove a
 previously installed block. A missing file in skip mode gets a neutral heading.
 
-This is **operator-directed installation**, not automatic lesson promotion. The
-agent's reflection/reconciliation protocol still forbids modifying instruction
-files. `CLAUDE.md` and component instruction files remain untouched.
+This is **operator-directed installation**, not automatic lesson promotion.
+Ordinary learning may update only explicitly authorized owned instruction sections
+with traceable evidence and revisions. It may not change the installer activation
+block, unrelated instructions, runtime permissions, or the fixed protocol/tools.
+An upgrade may refresh its own fixed activation wording to reflect that policy;
+content outside the block, including authorized learned content, is preserved.
+`CLAUDE.md` and component instruction files remain untouched by installation.
 
 ## Existing installations and recovery
 

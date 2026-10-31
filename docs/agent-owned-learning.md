@@ -57,40 +57,30 @@ These links do not merge the responsibilities:
 | Mettle learning protocol | Evaluate experience and preserve its relationship to guidance, later behavior, and revisions. |
 | Shared environment | Make discussions and contributions available; it does not thereby own participants' private learning state. |
 
-V1 does not wake an agent, select its next activity, automatically load an agenda,
+Mettle does not wake an agent, select its next activity, automatically load an agenda,
 or promise that a model will continue without a runtime. Installation does not
 confer a standing autonomous mandate. In the coding pilot, a human-assigned task
 remains a valid activity; nothing requires replacing it with open-ended exploration.
 
 ### Private continuity is not another truth store
 
-A runner or agent can retain a small handoff in the existing private `state/sessions/`
-directory. This is a suggested use of existing storage, not a newly installed
-agenda file or accepted record type. The runner/handoff must identify the path
-for a later session; bootstrap currently injects the personality and memory map,
-not these notes. A note being present on disk does not prove it was reloaded.
+Use the existing activity workspace's `WORK.md`, not a second handoff under
+`state/sessions/`. Its summary and notes preserve results so far, open questions,
+useful references, commitments, and the next useful action across sessions.
+`state/sessions/` remains for runtime/bootstrap audits. See the
+[workspace command reference](workspaces.md#working-continuity-and-outcomes).
 
-A compact continuity note may contain:
+Progress saving is independent of episode retention and learning checkpoints.
+Update at meaningful milestones and before yielding when the saved account is
+materially outdated. A shutdown hook is optional assistance, not a requirement.
+A later session rechecks the environment; missing outputs and unsaved progress
+must not be turned into invented completion.
 
-```text
-Standing goal or relevant commitment:
-Open question or incomplete investigation:
-Why this remains worth revisiting:
-Accepted episode/lesson/review references:
-Next suitable opportunity or missing prerequisite:
-Current permission/resource boundaries:
-State: pending, waiting, completed, or no longer applicable
-```
-
-"Investigate this counterexample" is a commitment, not a conclusion that the
-counterexample disproves a lesson. A mutable handoff is not an evidential archive;
-record meaningful outcomes in episodes and reviews. Check current instructions
-before resuming an old commitment. Do not treat it as an irrevocable mandate.
-
-A session boundary is an execution event, not necessarily a learning event.
-Preserve relevant unfinished commitments at a handoff, but do not manufacture a
-lesson at every conversation end. A significant mid-session correction can
-warrant immediate review. V1 has no guaranteed shutdown hook for saving handoffs.
+Ongoing and closed activities are searchable without making mutable plans into
+accepted lessons. Silence, age, and a final reply alone do not close work. A scoped
+review may be finished while a broader investigation remains open. Possible
+follow-ups are not necessarily commitments; retain actual promises and known
+conditions for continuation rather than assume perpetual obligations.
 
 ### Independence is not perpetual output
 

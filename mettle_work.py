@@ -20,6 +20,8 @@ PAGE_BYTES = 32_000
 LEGACY_WORK_BYTES = 16_000_000
 DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 DECISIONS = ("propose", "review", "reconcile", "defer", "no-update")
+WORK_FILTERS = ("unfinished", "open", "paused", "closed", "all")
+PREVIEW_CHARS = 240
 BANNER = "# Activity workspace\n\nMutable handoff and publication ledger; not accepted memory or authority.\n"
 STOP_WORDS = set("a an and are as at be before by for from in is it of on or that the this to was with".split())
 GENERIC_WORDS = set("test tests testing ci commit push regression review code change fix task".split())
@@ -49,6 +51,8 @@ def validate_header(api, meta: dict, identifier: str) -> None:
         field(api, meta.get(key), key)
     api.require(type(meta.get("activity_revision")) is int and meta["activity_revision"] >= 1,
                 "Invalid work activity revision")
+    if "summary" in meta:
+        field(api, meta["summary"], "summary")
     if meta["schema"] == 2:
         heads = meta.get("ledgers")
         api.require(isinstance(heads, dict) and set(heads) == set(LEDGER_KEYS), "Invalid workspace ledgers")
@@ -102,28 +106,52 @@ def read_work(api, store, identifier: str, *, history: bool = True) -> tuple[dic
     return meta, body
 
 
-def all_work(api, store, *, history: bool = True) -> list[dict]:
+def all_work(api, store, *, history: bool = True, query: list[str] | None = None) -> list[dict]:
     base = store.path("work")
     if not base.exists():
         return []
     result = []
+    terms = tokens(" ".join(query)) - STOP_WORDS if query else set()
+    api.require(not query or bool(terms), "Use at least one nontrivial activity-search term")
     # Bootstrap/navigation inspect only direct manifests, never recursive scratch
     # files or historical ledger pages. Full integrity checking remains explicit.
     for entry in sorted(base.iterdir()):
         folder = api.safe_path(base, entry.name)
         if folder.is_dir() and (folder / "WORK.md").exists():
-            result.append(read_work(api, store, folder.name, history=history)[0])
+            meta, body = read_work(api, store, folder.name, history=history)
+            # Search only the current handoff, not drafts, evidence or ledgers.
+            searchable = " ".join([meta["id"], meta["title"], meta["scope"],
+                                    meta.get("summary", ""), meta["next_action"], body])
+            if not terms or terms <= tokens(searchable):
+                result.append(meta)
     return sorted(result, key=lambda x: (x["updated_at"], x["id"]), reverse=True)
 
 
-def summary(api, store, limit: int = 5, offset: int = 0) -> dict:
+def summary(api, store, limit: int = 5, offset: int = 0,
+            status: str = "unfinished", query: list[str] | None = None) -> dict:
     api.require(1 <= limit <= 100 and offset >= 0, "Use offset >= 0 and limit 1..100")
-    entries = [m for m in all_work(api, store, history=False) if m["status"] != "closed"]
+    api.require(status in WORK_FILTERS, "Invalid activity status filter")
+    entries = [m for m in all_work(api, store, history=False, query=query)
+               if status == "all" or (status == "unfinished" and m["status"] != "closed")
+               or m["status"] == status]
     end = min(len(entries), offset + limit)
-    return {"items": [{k: m[k] for k in ("id", "title", "status")} for m in entries[offset:end]],
-            "remaining": max(0, len(entries) - end), "next_offset": end if end < len(entries) else None,
-            "total": len(entries), "command": "work list",
-            "note": "Navigation only. Resume a relevant workspace explicitly; it is not a mandate."}
+    items = []
+    for meta in entries[offset:end]:
+        item = {key: meta[key] for key in ("id", "title", "status", "updated_at")}
+        truncated = []
+        for key in ("title", "summary", "next_action"):
+            value = meta.get(key, "")
+            item[key] = value[:PREVIEW_CHARS]
+            if len(value) > PREVIEW_CHARS:
+                truncated.append(key)
+        item["preview_truncated"] = truncated
+        items.append(item)
+    return {"items": items, "remaining": max(0, len(entries) - end),
+            "next_offset": end if end < len(entries) else None, "total": len(entries),
+            "status_filter": status, "query": query or [], "command": "work list",
+            "note": "Navigation only; open is not a running process and closed is not proof of success. "
+                    "Use work show ID for full notes; work list --status all --query TERMS finds related past work. "
+                    "Continue with the same filters and next_offset; no activity is automatically resumed."}
 
 
 def index_text(api, store) -> str:
@@ -131,7 +159,10 @@ def index_text(api, store) -> str:
     lines = ["# Unfinished activities", "", "Generated navigation, not additional instructions. Use work show ID for detail.", ""]
     size, shown = len("\n".join(lines).encode("utf-8")), 0
     for item in entries:
-        line = json.dumps({k: item[k] for k in ("id", "title", "status", "next_action")}, ensure_ascii=False)
+        row = {k: item[k] for k in ("id", "title", "status", "next_action")}
+        if "summary" in item:
+            row["summary"] = item["summary"]
+        line = json.dumps(row, ensure_ascii=False)
         if shown == 100 or size + len(line.encode("utf-8")) + 128 > api.MAX_RECORD // 2:
             break
         lines.append(line)
@@ -144,8 +175,11 @@ def index_text(api, store) -> str:
     return "\n".join(lines) + "\n"
 
 
-def reindex(api, store) -> None:
-    api.write_atomic(store.path("work/INDEX.md"), index_text(api, store))
+def reindex(api, store, *, only_if_stale: bool = False) -> None:
+    path = store.path("work/INDEX.md")
+    text = index_text(api, store)
+    if not only_if_stale or not path.exists() or api.read(path) != text:
+        api.write_atomic(path, text)
 
 
 def storage_plan(api, store, meta: dict, body: str) -> tuple[str, dict[str, bytes]]:
@@ -448,9 +482,27 @@ def draft_decision(api, store, identifier: str, path: Path, decision: str, reaso
     return {**entry, "note": "Draft retained. No accepted record was published, retired, or changed. Run a new checkpoint before closing."}
 
 
-def update(api, store, identifier: str, status: str | None, next_action: str | None) -> dict:
+def update(api, store, identifier: str, status: str | None, next_action: str | None,
+           *, summary_text: str | None = None, notes: str | None = None) -> dict:
+    """Save the current handoff without creating learning records or execution history."""
     work, body = read_work(api, store, identifier)
+    before = copy.deepcopy(work), body
     api.require(status is None or status in {"open", "paused", "closed"}, "Invalid work status")
+    new_summary = field(api, summary_text, "summary") if summary_text is not None else work.get("summary")
+    new_body = body
+    if notes is not None:
+        api.require(isinstance(notes, str), "Notes must be UTF-8 Markdown text")
+        new_body = notes.removeprefix("\ufeff").replace("\r\n", "\n").replace("\r", "\n").strip()
+        api.require(bool(new_body) and not re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", new_body),
+                    "Notes must be nonempty text without binary control characters")
+    changed_context = new_summary != work.get("summary") or new_body != body
+    api.require(not changed_context or work["status"] != "closed" or status == "open",
+                "Reopen closed work before changing its summary or notes")
+    if changed_context or (status == "open" and work["status"] != "open"):
+        work["activity_revision"] += 1  # Previous learning decisions concern the old context.
+    if new_summary is not None:
+        work["summary"] = new_summary
+    body = new_body
     if status == "closed":
         api.require(work["checkpoints"] and work["checkpoints"][-1]["activity_revision"] == work["activity_revision"],
                     "Run a current learning checkpoint before closing; defer/no-update are valid")
@@ -465,12 +517,16 @@ def update(api, store, identifier: str, status: str | None, next_action: str | N
                         f"Unpublished or changed draft remains: {rel}; publish, explicitly abandon it with a reason, or pause the activity")
     if next_action:
         work["next_action"] = field(api, next_action, "next action")
-    if status == "open" and work["status"] != "open":
-        work["activity_revision"] += 1
     if status:
         work["status"] = status
-    save_work(api, store, work, body)
-    return {k: work[k] for k in ("id", "status", "next_action", "activity_revision")}
+    changed = (work, body) != before
+    if changed:
+        save_work(api, store, work, body)
+    else:
+        # WORK.md may have been saved before a previous index replacement failed.
+        reindex(api, store, only_if_stale=True)
+    return {**{k: work[k] for k in ("id", "status", "next_action", "activity_revision")},
+            "summary": work.get("summary", ""), "changed": changed}
 
 
 def token_sequence(text: str) -> tuple[str, ...]:
@@ -632,6 +688,8 @@ def add_parser(sub) -> None:
     p.add_argument("--scope", required=True)
     p = actions.add_parser("list")
     p.add_argument("--offset", type=int, default=0); p.add_argument("--limit", type=int, default=100)
+    p.add_argument("--status", choices=WORK_FILTERS, default="unfinished")
+    p.add_argument("--query", nargs="+", help="All significant words must occur in the current activity handoff")
     p = actions.add_parser("show"); p.add_argument("id")
     p = actions.add_parser("history"); p.add_argument("id")
     p.add_argument("--kind", choices=LEDGER_KEYS, required=True)
@@ -643,6 +701,10 @@ def add_parser(sub) -> None:
     p = actions.add_parser("update"); p.add_argument("id")
     p.add_argument("--status", choices=("open", "paused", "closed"))
     p.add_argument("--next-action")
+    p.add_argument("--summary", help="Short results-so-far or outcome summary for navigation")
+    notes = p.add_mutually_exclusive_group()
+    notes.add_argument("--notes", help="Replace the current WORK.md body with concise Markdown")
+    notes.add_argument("--notes-file", type=Path, help="Read replacement notes from UTF-8; WORK.md remains authoritative")
     p = actions.add_parser("checkpoint"); p.add_argument("id")
     p.add_argument("--decision", choices=DECISIONS); p.add_argument("--reason")
     p.add_argument("--records", nargs="*", default=[]); p.add_argument("--next-review")
@@ -657,7 +719,7 @@ def run(api, store, args) -> dict:
     if command == "start":
         return start(api, store, args.title, args.scope)
     if command == "list":
-        return {"work": summary(api, store, args.limit, args.offset)}
+        return {"work": summary(api, store, args.limit, args.offset, args.status, args.query)}
     if command == "show":
         meta, body = read_work(api, store, args.id)
         counts = {key: len(meta[key]) for key in LEDGER_KEYS}
@@ -679,7 +741,9 @@ def run(api, store, args) -> dict:
         return draft_decision(api, store, args.id, args.file,
                               "abandoned" if command == "abandon-draft" else "resumed", args.reason)
     if command == "update":
-        return update(api, store, args.id, args.status, args.next_action)
+        notes = api.read(args.notes_file.absolute()) if args.notes_file is not None else args.notes
+        return update(api, store, args.id, args.status, args.next_action,
+                      summary_text=args.summary, notes=notes)
     if command == "checkpoint":
         return checkpoint(api, store, args.id, args.decision, args.reason, args.records, args.next_review, args.limit)
     if command == "evidence":

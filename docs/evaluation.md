@@ -203,3 +203,18 @@ that relevant commitments were actually used and obsolete ones reconsidered.
 Do not introduce unattended execution or broaden real project permissions solely
 to satisfy a benchmark. A human-assigned coding pilot can test Mettle's learning
 loop without claiming to evaluate the activity loop of a complete autonomous agent.
+
+## Working-continuity evaluation
+
+Test a meaningful mid-activity save followed by process exit with no final
+reflection. A fresh process should recover purpose, observations versus hypotheses,
+uncertainty, links/partial outputs, actual commitments, and a sensible next action.
+Missing outputs must stay missing; unsaved progress need not be reconstructed.
+Check completed-work discovery, no closure from inactivity, and clean reinstall.
+
+The offline test simulates a helper process exiting after a save. It does not
+prove an LLM chooses good summaries or resumes appropriately. A later live trial
+should use a genuinely fresh session with a normal continuation prompt, not the
+answer or relevant memory ID embedded in that prompt. Record exact versions and
+other memory sources, and separate useful reuse from redoing the investigation.
+No paid model run or scheduling service is added to ordinary tests.
