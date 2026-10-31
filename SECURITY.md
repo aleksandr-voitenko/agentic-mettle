@@ -29,7 +29,7 @@ Accepted records must normally be published through the helper. It validates
 schemas, paths, references, and revision history, but it cannot verify causal
 truth, prevent a model inventing evidence, or stop another program editing files.
 The lock serializes helper operations, not independent concurrent agent lives.
-Run one authoritative writer for the single V1 personality.
+Run one authoritative writer for the single personality.
 
 ## Filesystem and retention
 
@@ -79,7 +79,7 @@ credentials, unneeded personal information, complete command environments, or
 unredacted transcripts. Evidence can be a minimal excerpt and a source reference.
 
 Append-only means normal historical preservation, not a denial of authorized
-erasure. V1 has no automated erasure command. An operator can redact sensitive
+erasure. Mettle has no automated erasure command. An operator can redact sensitive
 material and leave non-sensitive tombstones explaining affected references,
 then run validation. Do not publish private evidence in bug reports.
 

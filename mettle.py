@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Agentic Mettle V1: local, inspectable reflection records. Python 3.11+, stdlib only."""
+"""Agentic Mettle: local, inspectable reflection records. Python 3.11+, stdlib only."""
 from __future__ import annotations
 
 import argparse
@@ -21,7 +21,7 @@ import sys
 import tempfile
 import uuid
 
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 PACKAGE = ".agent-personality"
 STATUSES = {"proposed", "active", "contested", "retired", "superseded"}
 KINDS = {"episode": "E", "lesson": "L", "review": "V", "reconciliation": "C"}

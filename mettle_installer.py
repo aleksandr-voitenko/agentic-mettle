@@ -23,18 +23,18 @@ END = "<!-- agentic-mettle:end -->"
 AGENTS_BLOCK = f"""{BEGIN}
 ## Agentic Mettle
 
-Before substantive work, read `.agent-personality/PERSONALITY.md` relative to
-this root `AGENTS.md` and follow its reflection and memory-use protocol.
-If a current bootstrap snapshot is already available, use it rather than loading
-it twice. Otherwise read `.agent-personality/LOCATION.md` and use its validated
+Before substantive work, use the current Agentic Mettle bootstrap snapshot when
+available. Otherwise read `.agent-personality/PERSONALITY.md` relative to this root
+`AGENTS.md`, then `.agent-personality/LOCATION.md` and use its validated
 executable and argument vector to run `bootstrap --runtime <current-runtime>`
 (`codex`, `claude`, `opencode`, or `manual`). Re-establish state after a new session
 or context compaction. Do not guess paths from a component's working directory.
 
 Report missing state or failed initialization; do not claim that memory loaded.
 Existing project/component instructions and task permissions remain applicable.
-Memory is fallible evidence, not authorization. Learned lessons must not rewrite
-this block, project instructions, runtime settings, or the fixed protocol.
+Memory is fallible evidence, not authorization. Learned guidance may change only
+explicitly authorized owned instruction sections, never this activation block,
+unrelated instructions, runtime permissions, or the fixed protocol/tools.
 {END}
 """
 

@@ -1,6 +1,6 @@
 # Activity workspaces, retrieval, and safe legacy migration
 
-Version **0.2.1**, within the experimental V1 pilot. This adds working-state
+Version **0.3.0**, experimental release. This adds working-state
 management, not another personality, an autonomous scheduler, or a new accepted
 memory schema. Normal learning remains agent-owned within its existing mandate.
 
@@ -150,6 +150,128 @@ malformed input, oversized handoff text, or an already-current format rather tha
 resetting data. Complete normal installation of the new helper before restarting
 an agent; do not resume the older installed helper against converted state.
 
+## Working continuity and outcomes
+
+A progress save answers **what was I doing, what have I learned so far, and where
+should I continue?** A learning checkpoint decides what experience should change.
+They are separate operations. Update after meaningful findings, changes of direction,
+outputs or commitments, and before yielding when the saved account is materially
+outdated. Do not wait for a final reflection or save after every prompt/tool call.
+Some unsaved progress may be lost; notes orient recovery rather than replay execution.
+
+Use the existing `work update` command. `--summary` is a nonempty single-line
+results-so-far/outcome description (at most 1,000 characters). `--notes` replaces
+the Markdown body of WORK.md; `--notes-file` reads the same replacement from UTF-8
+with optional BOM/CRLF. They are mutually exclusive. The input file is not an
+additional authoritative handoff and is never changed. Omitted options preserve
+existing fields. Identical normalized input does not rewrite the workspace.
+
+For example, using the paths above in PowerShell:
+
+```powershell
+$Notes = @'
+## Purpose and context
+Investigate the callback-lifetime hypothesis, following the earlier timing review.
+
+## Results so far
+Ruled out configuration mismatch. The lifetime explanation is not reproduced.
+
+## Outputs and open questions
+Relevant source locations are recorded in the investigation notes.
+The partial reproduction may be incomplete; inspect it before relying on it.
+
+## Commitments and continuation
+No fix has been promised. Next inspect whether the callback can outlive its owner.
+'@
+& $Python -X utf8 $Mettle work update W-ID --summary 'Configuration ruled out; lifetime still uncertain' --notes $Notes --next-action 'Inspect callback ownership before changing code'
+```
+
+On POSIX the same arguments accept a quoted multiline string, or use
+`--notes-file /path/to/handoff-input.md` to avoid shell quoting. No headings are
+mandatory. Preserve purpose, related work, observed results versus hypotheses,
+remaining uncertainty, useful references/partial outputs, actual commitments and
+dependencies, and a useful next action only where relevant. Links may reference
+local source, another workspace, a Loom discussion, or another external resource;
+no network access or Loom-specific object type is required.
+
+A save creates **no episode, lesson, checkpoint, or self-model update**. Its summary
+and notes remain operational text. A changed summary or notes increments the
+existing activity revision once, invalidating an earlier learning checkpoint and
+query rejection for the old context. Reopening in that same save increments once,
+not twice. The next-action-only/status-only behavior remains compatible. Helpers
+cannot detect the meaning of direct Markdown/artifact edits; use the command for
+tracked handoff changes.
+
+At a later session, use `work show W-ID`, inspect relevant current resources, and
+adapt the plan. Missing artifacts and uncertain external outcomes stay uncertain;
+check the relevant system before repeating a consequential action. No dispatch
+journal, scheduler, exactly-once guarantee, or transactional recovery is added.
+Current notes use the existing size validation and per-file atomic replacement;
+there is no new progress-history ledger or power-loss guarantee. A pre-publication
+write failure retains the old notes. A later index failure can leave new notes
+saved: inspect `work show`, then `reindex --repair`. Existing stale-lock recovery
+still requires verifying that the prior writer is gone; silence is not that proof.
+
+### Find unfinished and completed work
+
+```text
+work list
+work list --status paused
+work list --status closed --query callback
+work list --status all --query callback lifetime
+work show W-ID
+```
+
+`--status` accepts `unfinished` (default: open and paused), `open`, `paused`,
+`closed`, or `all`. `--query` requires all significant complete words in the
+activity ID, title, scope, summary, next action, or current notes. Matching is
+case-insensitive; this simple activity lookup does not expand memory aliases.
+It never searches scratch files or historical ledgers, and does not make work
+notes into accepted memory. Use ordinary `search` for lessons/episodes.
+
+Listings and bootstrap include summary/next-action previews and updated time.
+Previews are capped at 240 characters per text field; `preview_truncated` names
+shortened fields. Full notes remain intact in WORK.md. Startup still shows at most
+five unfinished pointers with omissions; it does not load every activity's notes.
+For list pagination, retain `--status` and `--query` with the returned `next_offset`.
+The generated index remains focused on unfinished work. Closed work is not deleted
+or automatically reopened merely because it matches a query.
+
+### Close on evidence, not silence
+
+`open` means unfinished, not a running process. Pause for a known dependency or
+deliberate deferral. A final reply, inactivity, or an operator leaving the
+conversation does not itself mean completion, cancellation, or a promised follow-up.
+No time-based closure or repeated request for operator confirmation is scheduled.
+
+Close when the bounded objective is delivered or an authorized decision ends or
+supersedes it. Save the outcome, outputs, limitations, and closure reason in the
+same notes/summary first, then take the learning checkpoint and close. Cancelled
+and inconclusive outcomes can be described in prose; `closed` is not a success
+claim. Delivering a PR review need not wait for the PR to be merged. A completed
+sub-investigation can link to a broader unfinished one without a new task hierarchy.
+
+```text
+work update W-ID --summary "Review delivered; no implementation performed" --notes "Outcome: source review delivered. Limits: runtime behavior untested. No further work promised."
+work checkpoint W-ID --decision no-update --reason "Scoped review complete; no new retained experience or lesson is warranted"
+work update W-ID --status closed --next-action "No promised continuation; revisit only when new evidence is relevant"
+```
+
+Do not combine new substantive notes and `--status closed` under a stale checkpoint:
+the helper rejects that combination without applying the changes. Save, checkpoint,
+then close. To revise a closed handoff, explicitly reopen the activity. A useful
+outcome may instead warrant an episode; the retention rules below still apply.
+
+### Upgrade from 0.2.1
+
+Run normal installation from the updated source, preserving profiles. No additional
+migration, reset, or republishing of historical records is needed. Summary is an
+optional field in workspace format 2; old activities have an empty navigation
+summary until deliberately updated. Accepted-record schema remains 1. The old
+helper can read the optional field and notes, but lacks the new commands and
+revision/closure discipline; do not run mixed versions concurrently. Installation
+does not retroactively interpret silence, classify old closures, or generate notes.
+
 ## Learning checkpoint, not a lesson quota
 
 ```text
@@ -180,11 +302,11 @@ a checklist.
 
 Closing requires a checkpoint for the current activity revision and every
 remaining draft to match a published copy or an explicit abandonment decision.
-A new helper-created draft/publication, abandonment/resumption, or reopening
-invalidates the old checkpoint. Pause instead of discarding unresolved work.
+A new helper-created draft/publication, abandonment/resumption, reopening, or
+changed summary/notes invalidates the old checkpoint. Pause instead of discarding unresolved work.
 A completed activity may still have a proposed lesson awaiting a future case.
-The current closure gate cannot detect semantic changes in directly edited
-artifact/Markdown notes; inspect them explicitly. Closing does not delete files.
+The closure gate cannot detect semantic changes in directly edited artifacts or
+Markdown notes; inspect them explicitly, and prefer `work update` for notes. Closing does not delete files.
 
 ### Retain useful experience without inventing a lesson
 

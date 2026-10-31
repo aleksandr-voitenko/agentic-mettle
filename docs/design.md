@@ -3,7 +3,7 @@
 Agentic Mettle aims to make an agent's development inspectable: an experience
 informs a scoped lesson, a later decision tests that lesson, and the result can
 change both the practice and the agent's assessment of its own behavior. This is
-a design objective, not a claim that V1 establishes a persistent mind or has
+a design objective, not a claim that Mettle establishes a persistent mind or has
 already demonstrated long-term behavioral improvement.
 
 ## Three different things to learn
@@ -41,7 +41,7 @@ specific generator name that would help find it. Do not copy secrets into search
 handles. Generated indexes remain derived views; improve lesson metadata or the
 retrieval vocabulary rather than manually editing an index that will be rebuilt.
 
-V1 does not inject the whole handbook or an automatically rewritten lifetime
+Mettle does not inject the whole handbook or an automatically rewritten lifetime
 summary. The map is navigation, not another source of mandatory instructions.
 Do not confuse a grep-friendly presentation with an embedding-based search engine.
 
@@ -74,7 +74,7 @@ lesson ID just to publish a review.
 
 Ordinary work supplies observations and tentative adjustments. A dedicated
 reconciliation pass compares new evidence with existing records before accepting
-a durable revision. The same agent may perform both roles sequentially; V1 does
+a durable revision. The same agent may perform both roles sequentially; Mettle does
 not introduce a background worker, extra model, or automatic consolidation timer.
 Maintain one authoritative writer.
 
@@ -102,7 +102,7 @@ inputs, non-goals, steps, stop conditions, and verification. Retain the source
 experiences and distinguish verified steps from untested adaptations. Do not
 invent recurrence or promote an exploratory suggestion into proven practice.
 
-V1 stores these procedures in ordinary lesson bodies. It does not generate native
+Mettle stores these procedures in ordinary lesson bodies. It does not generate native
 skill registrations, install scripts, modify tool permissions, or auto-invoke side
 effects. Finding or reading a procedure never creates authority to execute it.
 
@@ -136,7 +136,7 @@ preserves proposal versus execution without adding a profile-versioning engine.
 The helper does not validate these prose links or enforce profile writes; inspect
 them during reconciliation. Identity changes remain operator-controlled.
 
-## What this PR does and does not automate
+## Implementation boundaries
 
 The existing helper already supplies lexical search, immutable records, exact
 review-to-revision links, generated indexes, and structural validation. The
@@ -144,7 +144,7 @@ strengthened rules in `PERSONALITY.md` govern selection, authorization, meaningf
 review, and reconciliation. They are agent obligations, not newly enforced
 filesystem permissions or a claim that a model will obey them.
 
-No runtime adapters, CLI commands, schema versions, or permission settings change
-here. Skill-package generation and semantic verification remain outside V1. Test
+Runtime adapters, permissions, and accepted record schema remain separate from
+working continuity. Skill-package generation and semantic verification are not automated. Test
 runtime delivery separately from behavior, and control other memory sources in
 [the evaluation plan](evaluation.md#control-other-memory-sources).

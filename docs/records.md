@@ -173,7 +173,7 @@ Normal edits must not erase historical origin, support, counterevidence,
 reconciliations, or predecessors. A correction should explain why earlier
 evidence was mistaken while leaving its reference inspectable. Administrative
 privacy deletion is an explicit operator procedure: back up appropriately,
-redact the sensitive content and repair references with a tombstone. V1 has no
+redact the sensitive content and repair references with a tombstone. Mettle has no
 automated privacy-deletion command; append-only conventions never override a
 legitimate deletion request.
 
@@ -265,7 +265,7 @@ promote a learned habit. Revise an assessment when compensation works rather
 than maintaining a negative label solely for narrative consistency.
 
 Perform consolidation as a distinct pass over changed lessons and their linked
-evidence. The same agent can perform this role after work; V1 has no background
+evidence. The same agent can perform this role after work; Mettle has no background
 consolidation service. Preserve original evidence and accepted revisions, and
 distinguish a reconciliation plan from the updates actually published. Frequency
 of retrieval is not validation, and replacing a summary or Git baseline is not
