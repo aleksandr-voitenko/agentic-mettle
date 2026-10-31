@@ -165,6 +165,9 @@ the Markdown body of WORK.md; `--notes-file` reads the same replacement from UTF
 with optional BOM/CRLF. They are mutually exclusive. The input file is not an
 additional authoritative handoff and is never changed. Omitted options preserve
 existing fields. Identical normalized input does not rewrite the workspace.
+An identical retry repairs a stale or missing derived work index when necessary,
+without advancing the activity revision or changing the handoff's timestamp.
+A healthy identical retry writes nothing beyond the normal temporary lock.
 
 For example, using the paths above in PowerShell:
 
@@ -209,8 +212,9 @@ journal, scheduler, exactly-once guarantee, or transactional recovery is added.
 Current notes use the existing size validation and per-file atomic replacement;
 there is no new progress-history ledger or power-loss guarantee. A pre-publication
 write failure retains the old notes. A later index failure can leave new notes
-saved: inspect `work show`, then `reindex --repair`. Existing stale-lock recovery
-still requires verifying that the prior writer is gone; silence is not that proof.
+saved: inspect `work show`, then retry the identical update or use `reindex --repair`.
+Existing stale-lock recovery still requires verifying that the prior writer is
+gone; silence is not that proof.
 
 ### Find unfinished and completed work
 
@@ -232,7 +236,12 @@ notes into accepted memory. Use ordinary `search` for lessons/episodes.
 Listings and bootstrap include summary/next-action previews and updated time.
 Previews are capped at 240 characters per text field; `preview_truncated` names
 shortened fields. Full notes remain intact in WORK.md. Startup still shows at most
-five unfinished pointers with omissions; it does not load every activity's notes.
+five unfinished pointers, reducing the count to fit the space remaining after the
+protocol, profiles, and memory map. `remaining` counts every omitted activity and
+`next_offset` locates the next page; when no pointer fits, use `work list` from
+offset zero. Required startup content and saved handoffs are never truncated.
+Installation preflight uses the same budget with additional runtime headroom.
+Bootstrap does not load every activity's notes.
 For list pagination, retain `--status` and `--query` with the returned `next_offset`.
 The generated index remains focused on unfinished work. Closed work is not deleted
 or automatically reopened merely because it matches a query.

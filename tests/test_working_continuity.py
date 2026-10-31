@@ -60,11 +60,52 @@ class WorkingContinuityTest(unittest.TestCase):
         args = dict(summary_text='A bounded finding.', notes='A useful handoff.', next_action='Inspect evidence.')
         first = self.update(**args)
         before = self.hashes()
-        second = self.update(**args)
+        with self.store.lock(), mock.patch.object(m, 'write_atomic', side_effect=AssertionError('Healthy retry wrote a file')):
+            second = w.update(m, self.store, self.id, None, **args)
         self.assertTrue(first['changed'])
         self.assertFalse(second['changed'])
         self.assertEqual(first['activity_revision'], second['activity_revision'])
         self.assertEqual(before, self.hashes())
+
+    def test_identical_retry_repairs_interrupted_index_without_rewriting_handoff(self):
+        for args in (dict(next_action='Inspect the retained evidence.'),
+                     dict(summary_text='A new finding.', notes='Still uncertain; inspect the source.')):
+            with self.subTest(args=args):
+                index = self.store.path('work/INDEX.md')
+                real_replace = os.replace
+
+                def interrupted(src, dst):
+                    if Path(dst) == index:
+                        raise OSError('simulated index replacement failure')
+                    return real_replace(src, dst)
+
+                with mock.patch.object(os, 'replace', side_effect=interrupted), self.assertRaises(OSError):
+                    self.update(**args)
+                with self.assertRaisesRegex(m.MettleError, 'Stale work index'):
+                    w.validate(m, self.store)
+                saved = self.path.read_bytes()
+                modified = self.path.stat().st_mtime_ns
+                revision = w.read_work(m, self.store, self.id)[0]['activity_revision']
+                with self.store.lock(), mock.patch.object(m, 'write_atomic', wraps=m.write_atomic) as writes:
+                    retry = w.update(m, self.store, self.id, None, args.get('next_action'),
+                                     summary_text=args.get('summary_text'), notes=args.get('notes'))
+                self.assertFalse(retry['changed'])
+                self.assertEqual(retry['activity_revision'], revision)
+                self.assertEqual(self.path.read_bytes(), saved)
+                self.assertEqual(self.path.stat().st_mtime_ns, modified)
+                self.assertEqual([call.args[0] for call in writes.call_args_list], [index])
+                self.assertEqual(w.validate(m, self.store)['workspaces'], 1)
+
+    def test_identical_retry_recreates_missing_index(self):
+        self.update(notes='Saved findings.')
+        index = self.store.path('work/INDEX.md')
+        index.unlink()
+        saved = self.path.read_bytes()
+        retry = self.update(notes='Saved findings.')
+        self.assertFalse(retry['changed'])
+        self.assertEqual(self.path.read_bytes(), saved)
+        self.assertTrue(index.is_file())
+        self.assertEqual(w.validate(m, self.store)['workspaces'], 1)
 
     def test_progress_save_needs_no_learning_checkpoint(self):
         for step in range(4):
@@ -270,6 +311,79 @@ os._exit(23)
         self.assertIn('Inspect callback ownership.', context)
         self.assertNotIn('long-private-note-marker', context)
         self.assertLess(len(context), m.MAX_CONTEXT)
+
+    def test_near_budget_installation_survives_progress_preview_growth(self):
+        profiles = {'identity.md': '# Identity\n' + 'i' * 3500 + '\n',
+                    'dispositions.md': '# Dispositions\n' + 'd' * 4500 + '\n'}
+        plan = m.install(self.root, [], profiles=profiles, replace_profiles=True, dry_run=True)
+        self.assertLessEqual(plan['startup_characters'] + 256, m.MAX_CONTEXT)
+        m.install(self.root, [], profiles=profiles, replace_profiles=True, expected_plan=plan['plan_id'])
+        identifiers = [self.id]
+        with self.store.lock():
+            for number in range(4):
+                identifiers.append(w.start(m, self.store, f'Investigation {number}', 'Synthetic review')['id'])
+            initial = m.bootstrap(self.store, 'manual', {})
+            self.assertGreater(len(initial), m.MAX_CONTEXT - 3000)
+        plan = m.install(self.root, [], dry_run=True)
+        self.assertLessEqual(plan['startup_characters'] + 256, m.MAX_CONTEXT)
+        with self.store.lock():
+            for identifier in identifiers:
+                w.update(m, self.store, identifier, None, 'n' * 240,
+                         summary_text='s' * 240, notes='Complete saved findings, not a startup preview.')
+        saved = {identifier: (w.work_path(m, self.store, identifier) / 'WORK.md').read_bytes()
+                 for identifier in identifiers}
+        result = self.cli('bootstrap', '--runtime', 'manual')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertLessEqual(len(result.stdout), m.MAX_CONTEXT)
+        data = json.loads(result.stdout.rstrip().rsplit('\n\n', 1)[1])
+        navigation = data['unfinished_work']
+        shown = len(navigation['items'])
+        self.assertGreater(shown, 0)
+        self.assertLess(shown, 5)
+        self.assertEqual(navigation['total'], 5)
+        self.assertEqual(navigation['remaining'], 5 - shown)
+        self.assertEqual(navigation['next_offset'], shown)
+        self.assertEqual(navigation['command'], 'work list')
+        remainder = w.summary(m, self.store, offset=navigation['next_offset'])
+        self.assertEqual({item['id'] for item in navigation['items'] + remainder['items']}, set(identifiers))
+        for name, content in profiles.items():
+            self.assertEqual(data['profiles'][name]['content'], content)
+        self.assertTrue(result.stdout.startswith((self.store.home / 'PERSONALITY.md').read_text(encoding='utf-8')))
+        for identifier, content in saved.items():
+            self.assertEqual((w.work_path(m, self.store, identifier) / 'WORK.md').read_bytes(), content)
+        # Reinstallation preflight must use the same optional-navigation budget.
+        before = self.hashes()
+        plan = m.install(self.root, [], dry_run=True)
+        self.assertLessEqual(plan['startup_characters'] + 256, m.MAX_CONTEXT)
+        self.assertEqual(self.hashes(), before)
+
+    def test_installation_still_rejects_oversized_required_content_without_writes(self):
+        before = self.hashes()
+        profiles = {'identity.md': '# Identity\n' + 'i' * 7000 + '\n',
+                    'dispositions.md': '# Dispositions\n' + 'd' * 7000 + '\n'}
+        with self.assertRaisesRegex(m.MettleError, 'even without work pointers'):
+            m.install(self.root, [], profiles=profiles, replace_profiles=True)
+        self.assertEqual(self.hashes(), before)
+
+    def test_bootstrap_can_omit_all_pointers_without_truncating_required_content(self):
+        with self.store.lock():
+            initial = m.bootstrap(self.store, 'manual', {})
+        # Quotes/backslashes expand in JSON; budget the serialized snapshot.
+        preview = 'é"\\' * 80
+        self.update(summary_text=preview, next_action=preview)
+        with mock.patch.object(m, 'MAX_CONTEXT', len(initial)), self.store.lock():
+            context = m.bootstrap(self.store, 'manual', {})
+        self.assertLessEqual(len(context), len(initial))
+        before = json.loads(initial.rsplit('\n\n', 1)[1])
+        data = json.loads(context.rsplit('\n\n', 1)[1])
+        self.assertEqual(data['profiles'], before['profiles'])
+        self.assertEqual(data['directory_map'], before['directory_map'])
+        self.assertEqual(data['unfinished_work']['items'], [])
+        self.assertEqual(data['unfinished_work']['total'], 1)
+        self.assertEqual(data['unfinished_work']['remaining'], 1)
+        self.assertEqual(data['unfinished_work']['next_offset'], 0)
+        self.assertEqual(data['unfinished_work']['command'], 'work list')
+        self.assertEqual(w.read_work(m, self.store, self.id)[0]['summary'], preview)
 
     def test_reinstallation_preserves_notes_status_and_accepted_state(self):
         self.update(summary_text='A useful partial result.', notes='Incomplete; no conclusion yet.')

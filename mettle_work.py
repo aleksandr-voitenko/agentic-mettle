@@ -175,8 +175,11 @@ def index_text(api, store) -> str:
     return "\n".join(lines) + "\n"
 
 
-def reindex(api, store) -> None:
-    api.write_atomic(store.path("work/INDEX.md"), index_text(api, store))
+def reindex(api, store, *, only_if_stale: bool = False) -> None:
+    path = store.path("work/INDEX.md")
+    text = index_text(api, store)
+    if not only_if_stale or not path.exists() or api.read(path) != text:
+        api.write_atomic(path, text)
 
 
 def storage_plan(api, store, meta: dict, body: str) -> tuple[str, dict[str, bytes]]:
@@ -519,6 +522,9 @@ def update(api, store, identifier: str, status: str | None, next_action: str | N
     changed = (work, body) != before
     if changed:
         save_work(api, store, work, body)
+    else:
+        # WORK.md may have been saved before a previous index replacement failed.
+        reindex(api, store, only_if_stale=True)
     return {**{k: work[k] for k in ("id", "status", "next_action", "activity_revision")},
             "summary": work.get("summary", ""), "changed": changed}
 
