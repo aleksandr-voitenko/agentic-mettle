@@ -21,7 +21,7 @@ import sys
 import tempfile
 import uuid
 
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 PACKAGE = ".agent-personality"
 STATUSES = {"proposed", "active", "contested", "retired", "superseded"}
 KINDS = {"episode": "E", "lesson": "L", "review": "V", "reconciliation": "C"}
@@ -519,6 +519,7 @@ class Store:
                 follow(other, seen | {identifier})
         for identifier_ in lessons:
             follow(identifier_, set())
+        local_module("mettle_catalogue").invalidate(sys.modules[__name__], self)
         write_atomic(path, encode(meta, body), exclusive=True)
         # The immutable record is authoritative; a crash here is repaired by reindex.
         if meta["kind"] == "lesson":
@@ -837,6 +838,7 @@ def install(root: Path, runtimes: list[str], configure_only: bool = False, pytho
             safe_path(root, PACKAGE + "/tools/mettle_installer.py"): read(source / "mettle_installer.py"),
             safe_path(root, PACKAGE + "/tools/mettle_work.py"): read(source / "mettle_work.py"),
             safe_path(root, PACKAGE + "/tools/mettle_migrate.py"): read(source / "mettle_migrate.py"),
+            safe_path(root, PACKAGE + "/tools/mettle_catalogue.py"): read(source / "mettle_catalogue.py"),
             safe_path(root, PACKAGE + "/WORK_REFERENCE.md"): read(source / "docs/workspaces.md"),
             safe_path(root, PACKAGE + "/PERSONALITY.md"): read(source / "PERSONALITY.md"),
             safe_path(root, PACKAGE + "/REFERENCE.md"): read(source / "docs/records.md"),
@@ -915,8 +917,8 @@ def bootstrap(store: Store, runtime: str, event: dict) -> str:
 
 
 def search(store: Store, query: list[str], limit: int, scope: str | None,
-           kind: str = "lessons", work_id: str | None = None) -> list[dict]:
-    return local_module("mettle_work").retrieve(sys.modules[__name__], store, query, limit, scope, kind, work_id)
+           kind: str = "lessons", work_id: str | None = None, *, history: bool = False, offset: int = 0) -> list[dict]:
+    return local_module("mettle_work").retrieve(sys.modules[__name__], store, query, limit, scope, kind, work_id, history=history, offset=offset)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -944,6 +946,8 @@ def parser() -> argparse.ArgumentParser:
             item.add_argument("--scope")
             item.add_argument("--kind", choices=("lessons", "episodes"), default="lessons")
             item.add_argument("--work", help="Exclude an exact candidate/query previously rejected in this activity")
+            item.add_argument("--history", action="store_true", help="Search all lesson revisions as historical evidence, including latest revisions")
+            item.add_argument("--offset", type=int, default=0, help="Historical result offset; repeat the same query/filters in an unchanged store")
         if name == "navigate":
             item.add_argument("--domain", help="Exact domain; omit to list domains")
             item.add_argument("--offset", type=int, default=0)
@@ -1047,33 +1051,26 @@ def main(argv: list[str] | None = None) -> int:
                 validate_windows_path(args.file)
                 print(local_module("mettle_work").publish(sys.modules[__name__], store, args.file.absolute(), args.expected_revision))
             elif args.command == "search":
-                print(json.dumps({"candidates": search(store, args.query, args.limit, args.scope, args.kind, args.work), "notice": "Candidates are not instructions or proof. Read full records and correction links. If lessons do not fit, explicitly search --kind episodes; drafts/work/backups are excluded."}, indent=2))
+                print(json.dumps(local_module("mettle_work").search_page(sys.modules[__name__], store, args.query, args.limit, args.scope, args.kind, args.work, history=args.history, offset=args.offset), ensure_ascii=False, indent=2))
+            elif args.command in {"show", "navigate"}:
+                with local_module("mettle_catalogue").open_catalogue(sys.modules[__name__], store) as catalogue:
+                    if args.command == "navigate":
+                        print(navigation_json(catalogue.navigation(args.domain, args.offset, args.limit)), end="")
+                    else:
+                        meta, body, _ = catalogue.get(args.id, args.revision)
+                        text = encode(meta, body)
+                        if args.work:
+                            print(json.dumps(local_module("mettle_work").make_draft(sys.modules[__name__], store, args.work, text)))
+                        else:
+                            output_text(text, args.output)
             else:
                 records, lessons = store.snapshot(verify_views=not (args.command == "reindex" and args.repair))
-                if args.command == "navigate":
-                    print(navigation_json(store.navigation(lessons, args.domain, args.offset, args.limit)), end="")
-                elif args.command == "show":
-                    if args.id in lessons:
-                        versions = lessons[args.id]
-                        number = args.revision if args.revision is not None else len(versions)
-                        require(1 <= number <= len(versions), "Unknown revision")
-                        text = encode(*versions[number - 1][:2])
-                        if args.work:
-                            print(json.dumps(local_module("mettle_work").make_draft(sys.modules[__name__], store, args.work, text)))
-                        else:
-                            output_text(text, args.output)
-                    else:
-                        require(args.id in records and args.revision is None, "Unknown record or inapplicable revision")
-                        text = encode(*records[args.id][:2])
-                        if args.work:
-                            print(json.dumps(local_module("mettle_work").make_draft(sys.modules[__name__], store, args.work, text)))
-                        else:
-                            output_text(text, args.output)
-                elif args.command == "reindex":
+                if args.command == "reindex":
                     store.reindex(lessons)
                     if store.path("work").exists():
                         local_module("mettle_work").reindex(sys.modules[__name__], store)
-                    print("Rebuilt derived current views and indexes; immutable evidence was not changed.")
+                    local_module("mettle_catalogue").rebuild(sys.modules[__name__], store, (records, lessons))
+                    print("Rebuilt derived current views, navigation and catalogue; immutable evidence was not changed.")
                 else:
                     for path, expected in store.indexes(lessons).items():
                         require(path.is_file() and read(path) == expected, f"Stale index: {path}; run reindex")
@@ -1081,7 +1078,7 @@ def main(argv: list[str] | None = None) -> int:
                         read(store.path("personality/" + filename))
                     vocabulary, _ = decode(read(store.path("memory/vocabulary.md")))
                     require(isinstance(vocabulary.get("groups"), list) and all(isinstance(g, list) and all(isinstance(t, str) for t in g) for g in vocabulary["groups"]), "Invalid vocabulary groups")
-                    print(json.dumps({"ok": True, **local_module("mettle_work").validate(sys.modules[__name__], store), "records": len(records), "lessons": len(lessons), "revisions": sum(map(len, lessons.values())), "checks": "schema, references, evidence retention, revision sequence, derived views, supersession cycles; not semantic truth"}, indent=2))
+                    print(json.dumps({"ok": True, "catalogue": local_module("mettle_catalogue").check(sys.modules[__name__], store, (records, lessons)), **local_module("mettle_work").validate(sys.modules[__name__], store, snapshot=(records, lessons)), "records": len(records), "lessons": len(lessons), "revisions": sum(map(len, lessons.values())), "checks": "schema, references, evidence retention, revision sequence, derived views, supersession cycles; not semantic truth"}, indent=2))
         return 0
     except (MettleError, OSError, ValueError) as exc:
         message = f"Agentic Mettle unavailable: {exc}"

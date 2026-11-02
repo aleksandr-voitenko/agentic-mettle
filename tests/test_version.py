@@ -39,7 +39,7 @@ class VersionTest(unittest.TestCase):
             root = Path(temporary)
             mettle.install(root, [])
             package = root / mettle.PACKAGE
-            for filename in ("mettle.py", "mettle_installer.py", "mettle_work.py", "mettle_migrate.py"):
+            for filename in ("mettle.py", "mettle_installer.py", "mettle_work.py", "mettle_migrate.py", "mettle_catalogue.py"):
                 self.assertEqual((package / "tools" / filename).read_bytes(), (ROOT / filename).read_text(encoding="utf-8").encode("utf-8"))
             for installed, source in (("PERSONALITY.md", "PERSONALITY.md"),
                                       ("REFERENCE.md", "docs/records.md"),

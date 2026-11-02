@@ -15,6 +15,7 @@ def record(kind, identifier, **fields):
 
 
 def put(store, text):
+    m.local_module("mettle_catalogue").invalidate(m, store)
     meta, _ = m.decode(text)
     if meta["kind"] == "lesson":
         relative = f"memory/lessons/{meta['domain']}/{meta['id']}/revisions/{meta['revision']:04d}.md"

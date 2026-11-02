@@ -109,7 +109,7 @@ def plan_unlocked(api, store) -> dict:
         if rel in STABLE:
             continue
         data = read_bytes(api, path)
-        backup = bool(re.fullmatch(r"(?:tools/)?(?:mettle(?:_installer|_work|_migrate)?\.py|PERSONALITY\.md|LOCATION\.md|REFERENCE\.md|WORK_REFERENCE\.md|\.gitignore)\.mettle-backup-[0-9a-f]{8}", rel))
+        backup = bool(re.fullmatch(r"(?:tools/)?(?:mettle(?:_installer|_work|_migrate|_catalogue)?\.py|PERSONALITY\.md|LOCATION\.md|REFERENCE\.md|WORK_REFERENCE\.md|\.gitignore)\.mettle-backup-[0-9a-f]{8}", rel))
         if backup:
             category = "backup"
         elif rel.startswith("tools/"):

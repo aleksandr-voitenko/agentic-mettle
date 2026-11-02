@@ -366,17 +366,16 @@ class BoundedMemoryTest(unittest.TestCase):
         cases = [(kind, query, scope, work) for kind in ["lessons", "episodes"]
                  for query in [["amberwidget"], ["needle00000"], ["source", "of", "truth"], ["source"], ["absentterm"]]
                  for scope, work in [(None, None), ("component/0", None), (None, work_id)]]
+        w.retrieve(m, self.store, ["amberwidget"], 3, None)  # Warm a real, verified catalogue.
         for kind, query, scope, work in cases:
             with self.subTest(kind=kind, query=query, scope=scope, work=work):
                 expected_records = CountingRecords(records)
-                actual_records = CountingRecords(records)
                 with mock.patch.object(self.store, "snapshot", return_value=(expected_records, lessons)):
                     expected = retrieve_reference(m, self.store, query, 3, scope, kind, work)
-                with mock.patch.object(self.store, "snapshot", return_value=(actual_records, lessons)):
+                with mock.patch.object(self.store, "snapshot", wraps=self.store.snapshot) as snapshots:
                     actual = w.retrieve(m, self.store, query, 3, scope, kind, work)
                 self.assertEqual(actual, expected)
-                self.assertEqual(actual_records.visits, len(records) if actual else 0)
-                self.assertEqual(actual_records.passes, 1 if actual else 0)
+                self.assertEqual(snapshots.call_count, 0)
                 if query == ["amberwidget"] and scope is None and work is None:
                     matches = 78 if kind == "lessons" else 121
                     self.assertEqual(expected_records.visits, matches * len(records))

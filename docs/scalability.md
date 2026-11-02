@@ -1,4 +1,146 @@
-# Bounded navigation and retrieval costs (0.3.1)
+# Targeted access and historical discovery (0.4.0)
+
+PR 2 changes ordinary read costs and adds explicit historical discovery; it does
+not change learning decisions. See the [design decision](targeted-access.md) and
+[validation/freshness contract](records.md#targeted-reads-and-historical-discovery).
+Accepted schema 1, workspace format 2, immutable records, profiles, and default
+ranking/eligibility remain unchanged. Consolidation remains PR 3.
+
+## Reproduce PR 2 measurements
+
+```sh
+python examples/benchmark_scalability.py --episodes 1000 5000 10000 --lessons 100 --domains 10 --repetitions 3 --navigation-stress > targeted-access-results.json
+```
+
+PowerShell can use `& $Python -X utf8 examples/benchmark_scalability.py` with the
+same arguments. Only temporary synthetic installations are created. Setup writes
+fixtures directly, then validates them; no pilot or model is involved. The large
+benchmark remains opt-in, outside ordinary CI.
+
+Each archive contains the requested 1,000/5,000/10,000 episodes and 100 proposed
+lessons, one revision each, across ten domains. Each lesson originates from the
+first episode. `needle00000` matches one item, while `amberwidget` matches the
+whole selected corpus; both request three results. Fixed metadata, Japanese and
+accented tags, and phrase aliases are present. Separate regression fixtures cover
+revisions, all statuses, scope, compound identifiers, activity rejections,
+corrections, and incorporated/pending reviews. Those tests compare every default
+result field with frozen 0.3.1 retrieval; the older 0.3.0 parity fixture remains.
+
+The benchmark runs each command in a fresh instrumented subprocess. The reference
+uses frozen 0.3.1 retrieval, or its full-snapshot show lookup, with the same
+validator. Every search pair asserts exact candidate equality. Warm means a
+verified catalogue exists; cold means it was removed, **not** that OS caches were
+flushed. Three repetitions cover each before/after query and cold/warm episode
+show. Reference show, cold broad episode search, navigation, bootstrap,
+publication, reindex, and stress check are each measured once. Raw JSON includes
+all repetitions, command and end-to-end process time, read/decode counts,
+snapshot calls, inventory entries/passes, catalogue connections/writes, other
+writes, and output sizes. Process time includes interpreter/wrapper startup.
+
+Canonical reads count real `mettle.read` calls, with the real decoder and snapshot
+still running. Inventory entries count canonical file metadata, not individual
+`stat`/directory syscalls. Catalogue connections count SQLite opens, not physical
+page I/O or OS cache misses. The existing lock-owner write is included separately;
+zero catalogue writes does not mean zero filesystem writes.
+
+## Local results, 2026-11-02
+
+macOS 27.0.1 arm64, Homebrew CPython 3.14.7, local temporary storage. OS caches were
+not flushed. The completed benchmark ran separately from the full test suites. These are local observations,
+not predictions for Windows or evidence of improved LLM learning.
+
+Median instrumented end-to-end search times in seconds, **0.3.1 → warm 0.4.0**:
+
+| Episodes | Lesson narrow | Lesson broad | Episode narrow | Episode broad |
+|---:|---:|---:|---:|---:|
+| 1,000 | 0.356 → 0.250 | 0.353 → 0.251 | 0.364 → 0.255 | 0.370 → 0.268 |
+| 5,000 | 1.054 → 0.768 | 1.055 → 0.772 | 1.106 → 0.813 | 1.154 → 0.883 |
+| 10,000 | 2.074 → 1.570 | 2.081 → 1.565 | 2.179 → 1.651 | 2.320 → 1.803 |
+
+Episode `show E-00000`, end-to-end seconds (reference is one sample; cold/warm
+are medians of three), and catalogue disk size:
+
+| Episodes | 0.3.1 show | Cold 0.4.0 show | Warm 0.4.0 show | Catalogue bytes |
+|---:|---:|---:|---:|---:|
+| 1,000 | 0.357 | 0.723 | 0.248 | 1,708,032 |
+| 5,000 | 1.045 | 2.615 | 0.764 | 7,569,408 |
+| 10,000 | 2.069 | 5.441 | 1.555 | 14,893,056 |
+
+The catalogue trades disk space and rebuild cost for fewer canonical decodes. It
+preserves lexical sequences and episode scope text; it is not a bounded-size
+replacement for the archive. At 10,000 episodes, cold broad search took
+5.690 seconds versus 1.803 seconds warm. A read immediately after publication
+can pay that cold cost because publication invalidates the catalogue.
+
+Deterministic canonical reads, independent of wall-clock timing:
+
+| Operation | 0.3.1 reads | Warm 0.4.0 reads |
+|---|---:|---:|
+| Isolated episode show | 1,100 / 5,100 / 10,100 | 1 |
+| Lesson narrow search | 1,100 / 5,100 / 10,100 | 2 (lesson + origin) |
+| Lesson broad search, limit 3 | 1,100 / 5,100 / 10,100 | 4 (three lessons + shared origin) |
+| Episode narrow search | 1,100 / 5,100 / 10,100 | 1 |
+| Episode broad search, limit 3 | 1,100 / 5,100 / 10,100 | 3 |
+| Warm domain lesson navigation, limit 3 | Full archive | 4 |
+
+Each warm command makes **zero snapshot calls**, one inventory pass over
+1,100 / 5,100 / 10,100 canonical entries, one catalogue connection, and no
+catalogue/view/navigation writes. Search additionally decodes the vocabulary;
+selected current lessons read their current views. Cold show takes one snapshot,
+N+1 canonical reads, two inventory passes (2N entries), two SQLite open attempts,
+and one catalogue write. Cold broad episode search reads N+3 canonical files.
+Warm relationship enrichment performs no full-record collection pass; reverse
+links select relevant canonical reviews/corrections. The performance fixtures
+have no such links; regression tests exercise their nonzero dependency costs.
+
+Metadata enumeration still grows with all files/directories. SQLite structural
+checks and path coverage inspect derived data; search scans cached lexical
+features, computes frequencies, and sorts matches. A selected lesson can depend
+on its entire local history and immediate evidence, so neither show nor search
+has a fixed-cost guarantee. Full publication, installation, migration, explicit
+check/reindex, workspace checkpoints and rejection guards retain archive work.
+Workspace publication retry and installer boundary scans remain unchanged.
+
+Episode publication still writes zero lesson views/navigation files and removes
+the catalogue before accepted publication. The subsequent reindex rebuilds that
+catalogue and the work index; unchanged lesson views/navigation are not rewritten.
+Bootstrap reads zero canonical files and no catalogue. Its output is 15,515
+characters in the standard fixture; required protocol/profiles retain the
+24,000-character startup budget.
+
+The PR 1 navigation stress fixture remains 20 episodes, 900 lessons (500 with
+long Unicode metadata in one domain), and 401 domains. The root map is 387 UTF-8
+bytes; the largest generated index is 14,880 bytes, below the 16,000-byte budget.
+Bootstrap emits 15,538 characters. Cold domain navigation includes reconstruction
+(971 canonical reads); full check reads 920 canonical files and 900 current views
+**once**, compared with PR 1's two snapshots (1,840 + 1,800 reads). Full check took
+1.951 seconds in this run and also compared the catalogue with canonical data.
+
+## Validation and compatibility
+
+Regression tests assert canonical read/decode counts, zero warm snapshots,
+unchanged catalogue bytes/mtimes, real source validation, exact default-search
+parity, historical pagination/labels, corruption and interruption recovery, and
+canonical/profile/workspace hashes across rebuild/install. Existing full
+integrity, immutable-publication, navigation stress, retention, path, migration,
+and workspace tests remain. CI retains Linux/Windows on Python 3.11, 3.12, 3.13.
+See the PR for final local/CI outcomes; Windows was not run locally.
+
+Normal source installation deploys all five helper modules and rebuilds the
+catalogue. Missing/stale/incompatible cache data is disposable; damaged accepted
+history cannot be restored from it. See [upgrade and repair](installer.md#upgrading-targeted-access-040).
+No new canonical schema, relocation, historical rewriting, automatic learning,
+background work, or consolidation is included.
+
+## Archived PR 1 measurements (0.3.1)
+
+The following is the retained PR 1 measurement record. Its full-snapshot read
+behavior and four-module package describe **0.3.1**, not the current release.
+Reproducing that reference benchmark requires checkout
+`f6d521ae03bc814016c14553e78dfce37d3a15c9`; the command above compares 0.3.1 with
+current targeted access.
+
+### Bounded navigation and retrieval costs (0.3.1)
 
 This release bounds generated memory navigation, enriches only the selected
 search results in one relationship pass, and avoids unrelated derived writes.
@@ -7,7 +149,7 @@ applicability, or learning decisions. The regression suite compares all result
 fields against the frozen 0.3.0 retrieval implementation, including phrase aliases,
 scope, ties, activity-scoped rejections, statuses, corrections, and pending reviews.
 
-## Remaining full-archive work
+### Remaining full-archive work
 
 Search, show, navigate, publication, installation, check, and reindex still
 validate the complete accepted snapshot. Search still tokenizes the chosen
@@ -22,7 +164,7 @@ current-versus-historical discovery belong to PR 2; bounded agent-owned
 consolidation belongs to PR 3. Bootstrap still avoids the accepted archive and
 reads only required startup inputs and direct work headers.
 
-## Reproduce the measurements
+### Reproduce the measurements
 
 Run from the source checkout with Python 3.11+ (use your selected executable):
 
@@ -54,7 +196,7 @@ The output contains each repetition, medians, read/write counts, and byte/charac
 sizes. Read counts cover `mettle.read`, not filesystem metadata calls, OS cache
 misses, or installer guard reads. Relationship counts start after snapshot validation.
 
-## Local results, 2026-11-02
+### Local results, 2026-11-02
 
 Environment: macOS 27.0.1, arm64, Homebrew CPython 3.14.7, local temporary storage.
 Three repetitions per before/after query, in alternating before/after order;
@@ -99,7 +241,7 @@ not making every small index smaller. Bootstrap emitted 15,331 characters
 (including CLI newlines), read five noncanonical files, and read no canonical
 records. Its measured process times were 0.080–0.084 seconds.
 
-### Navigation stress fixture
+#### Navigation stress fixture
 
 Twenty episodes, **500 lessons in one domain**, plus 400 additional lessons in
 400 distinct domains: 900 lessons, 401 domains, 402 generated index files.
@@ -121,7 +263,7 @@ reads. Size/count tests verify that every domain and lesson is reached exactly
 once by continuation in an unchanged store. Separate tests use near-budget required
 profiles and optional work pointers to check installer/bootstrap agreement.
 
-## Validation and compatibility
+### Validation and compatibility
 
 The full suite, synthetic walkthrough, Python compilation, and `git diff --check`
 are required before publication. CI retains Linux and native Windows with Python
