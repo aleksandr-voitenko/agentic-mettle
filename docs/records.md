@@ -253,6 +253,12 @@ same tokenizer, phrase aliases, scoped corpus, term frequencies, scores and ties
 It rereads and validates selected canonical records and reported reverse links.
 A pending review is excluded only when incorporated into the matched lesson
 revision. A correction does not replace the observed episode it corrects.
+Episode extensions are not lesson-schema requirements: retrieval uses a string
+`domain` and string members of list-valued `tags`, `aliases`, and `scope`. Other
+values remain intact as opaque metadata and do not become search terms. Scoped
+episode search also retains its title/body substring fallback. This extraction
+rule does not tighten accepted schema 1 or rewrite existing episodes; older
+catalogue lexical versions are rebuilt automatically.
 Every read still enumerates canonical file metadata. These operations grow with
 archive size; no constant-time or large-archive latency guarantee is claimed.
 Bootstrap reads the small map, profiles, and work headers without loading history.

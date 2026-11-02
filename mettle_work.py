@@ -538,6 +538,12 @@ def tokens(text: str) -> set[str]:
     return set(token_sequence(text))
 
 
+def optional_text_list(meta: dict, key: str) -> list[str]:
+    """Use text members of episode extension lists without constraining their schema."""
+    value = meta.get(key)
+    return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
+
+
 def contains_phrase(sequence: tuple[str, ...], phrase: tuple[str, ...]) -> bool:
     return bool(phrase) and any(sequence[i:i + len(phrase)] == phrase
                                for i in range(len(sequence) - len(phrase) + 1))
@@ -601,7 +607,7 @@ def ranked_page(api, store, catalogue, query, limit, scope, kind, work_id, *, hi
     for meta, lexical, path in catalogue.sources(kind, history):
         if not history and kind == "lessons" and meta["status"] in {"retired", "superseded"}:
             continue
-        scopes = meta.get("scope", [])
+        scopes = meta["scope"] if kind == "lessons" else optional_text_list(meta, "scope")
         if scope and not any(scope.casefold() in s.casefold() for s in scopes):
             # Episodes have no mandatory scope field; explicit body/title filter.
             if kind != "episodes" or scope.casefold() not in lexical["episode_scope"]:

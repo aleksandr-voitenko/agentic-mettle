@@ -14,7 +14,7 @@ import sqlite3
 import tempfile
 
 FORMAT = 1
-LEXICAL_VERSION = "phrases-v1-sequences-1"
+LEXICAL_VERSION = "phrases-v1-sequences-2"
 RELATIVE = "memory/catalogue.sqlite3"
 
 
@@ -44,8 +44,17 @@ def invalidate(api, store):
 
 def lexical(api, meta, body):
     work = api.local_module("mettle_work")
-    fields = [meta["id"], meta["title"], meta.get("domain", ""),
-              *meta.get("tags", []), *meta.get("aliases", []), *meta.get("scope", [])]
+    if meta["kind"] == "lesson":
+        # These types are required by the accepted lesson schema.
+        fields = [meta["id"], meta["title"], meta["domain"],
+                  *meta["tags"], *meta["aliases"], *meta["scope"]]
+    else:
+        # Episode extensions accept arbitrary JSON. Index useful text without
+        # imposing lesson requirements on canonical records or stringifying data.
+        domain = meta.get("domain")
+        fields = [meta["id"], meta["title"], domain if isinstance(domain, str) else ""]
+        for key in ("tags", "aliases", "scope"):
+            fields.extend(work.optional_text_list(meta, key))
     return {"header": [work.token_sequence(s) for s in fields],
             "body": [work.token_sequence(body)],
             # Preserve the old episode scope substring filter, including punctuation.
