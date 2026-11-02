@@ -62,3 +62,14 @@ new activity catalogue, or new canonical store is part of this decision.
 
 The existing workspace publication retry and installer/migration boundary checks
 remain in place; this PR does not change mutation safety to reduce their scans.
+
+## Consolidation packets (0.5.0)
+
+`work consolidate` opens the catalogue once, selects from cached metadata and
+optionally invokes the unchanged historical lexical ranking once. It validates
+explicit inputs and returned records using `Catalogue.get`, including applicable
+local histories/references. It reads the selected activity's publication ledgers,
+not unrelated workspace bodies. Count/UTF-8 bounds concern the emitted review set,
+not constant-time archive work. It writes no learning/checkpoint state. Cold rebuild,
+freshness, path protections and full-integrity operations remain as described above.
+See [consolidation](consolidation.md) for selection and omission limits.

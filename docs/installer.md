@@ -160,7 +160,7 @@ content outside the block, including authorized learned content, is preserved.
 
 ### Upgrading targeted access (0.4.0)
 
-Normal source installation deploys all five helper modules, protocol, and
+Normal source installation deploys the complete helper package, protocol, and
 references, and rebuilds disposable `state/memory/catalogue.sqlite3` from a fully
 validated archive. It preserves existing profiles, custom vocabulary, workspace
 format 2, accepted schema 1, and immutable history. No pilot-file migration or
@@ -271,3 +271,14 @@ exclude OpenCode and use the existing adapter-fragment/manual-merge workflow.
 Run `check` for local record integrity and test fresh sessions, resume, and
 compaction as described in [runtime integrations](integrations.md). These checks
 are separate from evaluating whether later behavior improves.
+
+### Upgrading consolidation (0.5.0)
+
+Normal source installation adds `mettle_consolidate.py` (six helper modules total)
+and `CONSOLIDATION_REFERENCE.md`, and refreshes the concise protocol. Profiles,
+vocabulary, workspace format 2, accepted schema 1/history, runtime choices, and
+instruction content outside the managed activation block remain preserved. No new
+state directory or packet migration is needed. Existing catalogue rebuild/repair
+procedures apply. Deploy the complete package; 0.4.0 helpers cannot execute the new
+command. Do not use concurrent old/new writers. Startup does not load this guide or
+any consolidation packet automatically.

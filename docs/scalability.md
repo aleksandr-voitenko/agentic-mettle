@@ -1,12 +1,85 @@
-# Targeted access and historical discovery (0.4.0)
+# Scalability and bounded comparison (0.5.0)
+
+## PR 3 packet measurements
+
+The packet uses one protected metadata inventory/catalogue opening, one cached
+metadata scan, and at most one historical lexical ranking. It validates explicit
+seeds and returned records through existing targeted access. No unrelated canonical
+bodies are decoded on the warm path; own lesson history/direct reference checks can
+still grow. Cold cache reconstruction, publication, installation, full `check`,
+and `reindex` remain complete-archive operations. See [the design](consolidation.md).
+
+Reproduce (only disposable synthetic installations):
+
+```sh
+python examples/benchmark_scalability.py --consolidation-only --episodes 1000 5000 10000 --lessons 100 --domains 10 --repetitions 3 > consolidation-results.json
+```
+
+Measured locally: macOS 27.0.1 arm64, Python 3.14.7, temporary local filesystem,
+three repetitions in fresh subprocesses, rerun after the correction-discovery fix.
+The 1,000 and 5,000 episode sizes were
+run; 10,000 remains available opt-in. Each archive has 100 proposed single-revision
+lessons in ten domains, originating from E-00000, plus an empty activity. The
+explicit seed E-00001 is unrelated; narrow `needle00000` matches one lesson and
+broad `amberwidget` matches all 100. Each packet requests at most 12 items; lexical
+selection takes five anchors. No reviews or corrections are in this measurement
+fixture; regression scenarios exercise those links separately.
+
+| Episodes | Query | Cold canonical reads | Warm canonical reads | Packet UTF-8 bytes | Cold median process s | Warm median process s |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 1,000 | narrow | 1,103 | 3 | 3,473 | 0.715 | 0.247 |
+| 1,000 | broad | 1,107 | 7 | 7,094 | 0.721 | 0.253 |
+| 5,000 | narrow | 5,103 | 3 | 3,473 | 2.621 | 0.777 |
+| 5,000 | broad | 5,107 | 7 | 7,094 | 2.627 | 0.779 |
+
+Warm calls: zero snapshots, one catalogue connection, one ranking call, 1,100 or
+5,100 canonical inventory entries and cached metadata rows, zero derived/cache
+writes. Cold calls: one snapshot, two inventory passes/connections, one catalogue
+write. Every call also writes the existing temporary lock-owner file. Counts
+instrument real readers/decoders, not a mocked-out snapshot. Inventory counts are
+entries, not syscall counts; catalogue connections are not physical SQLite page
+reads. Process timings include instrumented wrapper/interpreter startup. Cold
+means no catalogue, not flushed OS caches. These warm OS-cache local timings are
+not Windows predictions or evidence of improved model learning.
+
+The correction-discovery follow-up adds 76 bytes of review-expansion disclosure
+to these packets (previously 3,397 / 7,018 bytes at e1c8985); read counts are
+unchanged in this no-review benchmark fixture. Separate normal-publication tests
+cover correction → originating evidence → lesson and lesson → supporting review
+→ source episode → correction, including activity seeds and priority over lexical
+matches. A nine-review fixture verifies the eight-review expansion cap, byte/count
+bounds, pagination and executable continuation for unexamined source dependencies.
+
+Deterministic regression guards cover item/serialized-byte bounds, complete
+pagination in an unchanged store, optional preview removal, exact oversized-path
+omissions, explicit-input and counterevidence omissions, one inventory/query,
+real canonical reads, no warm derived writes, and unchanged records/profiles/work
+from packet generation. The authored outcome scenarios test supported workflows,
+not autonomous semantic judgment. The [manual pilot](evaluation.md#manual-consolidation-pilot)
+was not run with a model.
+
+Protocol size: **11,207 → 11,899 UTF-8 bytes; 1,509 → 1,595 whitespace-separated
+words** (0.4.0 baseline to this release). No token savings are claimed. The startup
+character budget is unchanged; the guide and packets are on demand. An actual
+0.4.0 source installation from ed95314 was upgraded in a temporary synthetic root:
+14 protected files/authorized-section checks retained identical SHA-256 values,
+including canonical records, custom profiles/vocabulary and workspace content.
+Installation metadata and the managed activation block retain their ordinary
+upgrade behavior. Installed packet, `check`, and bootstrap passed; bootstrap was
+17,445 characters for that fixture. The automated compatibility fixture also tests
+preservation and installed discovery. See the PR for final local and CI outcomes.
+
+The following PR 2/PR 1 sections are historical measurements and package descriptions.
+
+## Archived PR 2: targeted access and historical discovery (0.4.0)
 
 PR 2 changes ordinary read costs and adds explicit historical discovery; it does
 not change learning decisions. See the [design decision](targeted-access.md) and
 [validation/freshness contract](records.md#targeted-reads-and-historical-discovery).
 Accepted schema 1, workspace format 2, immutable records, profiles, and default
-ranking/eligibility remain unchanged. Consolidation remains PR 3.
+ranking/eligibility remain unchanged. Consolidation was deferred to PR 3.
 
-## Reproduce PR 2 measurements
+### Reproduce PR 2 measurements
 
 ```sh
 python examples/benchmark_scalability.py --episodes 1000 5000 10000 --lessons 100 --domains 10 --repetitions 3 --navigation-stress > targeted-access-results.json
@@ -43,7 +116,7 @@ still running. Inventory entries count canonical file metadata, not individual
 page I/O or OS cache misses. The existing lock-owner write is included separately;
 zero catalogue writes does not mean zero filesystem writes.
 
-## Local results, 2026-11-02
+### Local results, 2026-11-02
 
 macOS 27.0.1 arm64, Homebrew CPython 3.14.7, local temporary storage. OS caches were
 not flushed. The completed benchmark ran separately from the full test suites. These are local observations,
@@ -116,7 +189,7 @@ Bootstrap emits 15,538 characters. Cold domain navigation includes reconstructio
 **once**, compared with PR 1's two snapshots (1,840 + 1,800 reads). Full check took
 1.951 seconds in this run and also compared the catalogue with canonical data.
 
-## Validation and compatibility
+### Validation and compatibility
 
 Regression tests assert canonical read/decode counts, zero warm snapshots,
 unchanged catalogue bytes/mtimes, real source validation, exact default-search

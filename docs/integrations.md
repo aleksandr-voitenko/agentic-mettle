@@ -426,3 +426,12 @@ See [upgrade and repair](installer.md#upgrading-targeted-access-040) before mixi
 helper versions or restoring a backup. Ordinary `show`, `search`, and `navigate`
 have the [targeted validation contract](records.md#targeted-reads-and-historical-discovery);
 full `check` remains the whole-store integrity command.
+
+## Consolidation package (0.5.0)
+
+Source installation deploys `mettle_consolidate.py` and the on-demand
+`CONSOLIDATION_REFERENCE.md`. The normal workspace command and checkpoint prompt
+make comparison discoverable; no hook, provider connection, Loom dependency,
+scheduler or model call is added. Bootstrap's adaptive character budget remains
+unchanged. See [upgrade](installer.md#upgrading-consolidation-050) and the
+[workflow](consolidation.md).

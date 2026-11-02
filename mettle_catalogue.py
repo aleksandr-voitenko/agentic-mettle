@@ -302,6 +302,12 @@ class Catalogue:
             path = self.store.root / row["path"]
             yield json.loads(row["metadata"]), json.loads(row["lexical"]) if features else {}, path
 
+    def metadata(self):
+        """All exact references, without canonical bodies or lexical features."""
+        for row in self.db.execute("SELECT metadata, path FROM records ORDER BY ordinal"):
+            self.api.require(row["path"] in self.observed, "Catalogue path is not canonical; run reindex --repair")
+            yield json.loads(row["metadata"])
+
     def relationships(self, selected, kind):
         relation = "counterexample" if kind == "lessons" else "corrects"
         identifiers = {item["id"] for item in selected}

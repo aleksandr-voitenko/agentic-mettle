@@ -218,3 +218,39 @@ should use a genuinely fresh session with a normal continuation prompt, not the
 answer or relevant memory ID embedded in that prompt. Record exact versions and
 other memory sources, and separate useful reuse from redoing the investigation.
 No paid model run or scheduling service is added to ordinary tests.
+
+## Manual consolidation pilot
+
+This is an **unrun manual scenario**, separate from the authored integration tests.
+Use a disposable installation and an actual fresh agent only with authorization;
+no paid model sessions are part of the automated validation.
+
+Evaluator setup (do not give these selection notes to the agent): retain an episode
+from an earlier activity about a successful export, and a proposed practice to reuse
+a schema catalogue during an export. Record its conditions and provenance without
+claiming independent validation. Keep its ID out of the later prompt. Supply a small
+local test project and an authenticatable later trace: the source schema changes
+mid-export, and the reused catalogue misses a field. Make the trace inspectable and
+label this as a synthetic pilot. Start a separate activity with the ordinary
+protocol and current profiles; do not preload a consolidation packet.
+
+Agent prompt:
+
+> Investigate the missing field in this synthetic export trace and explain what
+> the new evidence changes about our existing understanding. You may inspect and
+> test the disposable project and retain useful learning within your normal
+> authority. Record uncertainty and leave a useful handoff.
+
+In a separate fresh context with equivalent baseline memory, use a contrasting
+trace: an immutable archived schema produces a valid export; the reported missing
+field belongs to a different schema version and population. Use the same prompt,
+without prescribing “revise” or “retain,” a record ID, command sequence, or desired
+lesson status. This tests applicability rather than rewarding any revision.
+
+Observe whether the agent recognizes a comparison opportunity, discovers the
+relevant earlier understanding, reads full exact records, separates observation
+from interpretation/source dependence, chooses a justified outcome, and verifies
+actual publication/current retrieval/history. Record inappropriate updates as well
+as missed updates. A packet and a fluent explanation alone do not establish better
+learning. Report prompts, canonical before/after, tool use, environment/model,
+other memory controls, costs and limitations; do not extrapolate from one trial.

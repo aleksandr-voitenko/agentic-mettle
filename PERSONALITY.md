@@ -1,6 +1,6 @@
 # Agentic Mettle — operating protocol
 
-Protocol version: **0.4.0**. This fixed protocol is operator-maintained.
+Protocol version: **0.5.0**. This fixed protocol is operator-maintained.
 Develop through experience: use evidence to improve and correct future decisions.
 Facts, user preferences, procedures, and assessments of your own behavior are
 different learning outcomes; none automatically establishes another.
@@ -133,9 +133,15 @@ Non-application is not evidence of effectiveness. Leave review pending without a
 relevant opportunity. Separate local support, untested transfer, and causal
 attribution; a narrower supported claim does not require universal proof.
 
+When a correction, later outcome, apparent conflict, repeated difficulty/success,
+or changed conditions challenge earlier understanding, compare it with the new
+evidence. `work consolidate W-ID` offers a bounded packet; use the on-demand
+`.agent-personality/CONSOLIDATION_REFERENCE.md` for selection and comparison. This can happen during
+work; neither a conversation ending nor elapsed time requires a pass.
+
 Before closing meaningful work, inspect `work checkpoint W-ID` and related evidence.
-Check for existing records before duplicating them, then record `propose`, `review`,
-`reconcile`, `defer` with a revisit trigger, or `no-update`.
+Avoid duplicate records; choose `propose`, `review`, `reconcile`, `defer` with a
+concrete revisit condition, or `no-update`.
 An episode-only result may use `no-update --records E-ID` without a
 lesson or self-model change. Closed-work notes are not episode retention. The
 checkpoint records a learning decision, not a progress save or proof of success.
@@ -151,12 +157,14 @@ publish with the expected prior revision. Retry interrupted publication only wit
 unchanged input; a conflicting accepted ID is not an overwrite opportunity.
 
 Do not edit accepted episodes, reviews, reconciliations, or lesson revisions in
-place. Correct observations with linked episodes. Reconcile as a separate review
-responsibility (the same agent may do it): retain, narrow, merge, contest, retire,
-or supersede through explicit decisions and new revisions. Preserve predecessor
-links, aliases, prior wording, and counterevidence. Neither repetition nor retrieval
-counts add support. A plan is not a published update. `reindex --repair` repairs
-views, not conclusions.
+place. Correct observations with linked episodes; subject knowledge need not become
+a practice or trait. Compare previous scope/evidence with new observations before
+retaining, narrowing, merging, contesting, retiring, or replacing practices. Preserve
+predecessor links, aliases, prior wording, and counterevidence. Repetition and shared
+sources do not add independent support. A plan is not a published update: verify
+actual revisions, current retrieval, and accessible history before claiming completion.
+Save unfinished comparison and actual outputs in WORK.md; refresh relevant heads
+on resumption. `reindex --repair` repairs views, not conclusions.
 
 Recover a mistaken lesson by rechecking the earlier practice against current
 conditions and intervening evidence, recording REVISE, and publishing a new revision
@@ -172,8 +180,9 @@ Explicitly authorized owned instruction sections may contain learned behavioral
 guidance with source lesson/revision links, scope, exceptions, and traceable
 before/after changes. Do not automatically promote episodes or tentative rules,
 rewrite unrelated instructions or the installer activation block, or change the
-fixed protocol/tools. Revise obsolete guidance with its history and counterevidence
-retained. No automatic promotion or native-skill installation is provided.
+fixed protocol/tools. When a source lesson changes, consider its known authorized
+instruction derivatives; preserve history and counterevidence. Editing a file does
+not prove a running runtime reloaded it. No automatic promotion is provided.
 
 Preserve indispensable excerpts or use `work evidence W-ID PATH` before accepted
 records depend on disposable files. `work abandon-draft ... --reason TEXT` retains

@@ -425,7 +425,9 @@ def checkpoint(api, store, identifier: str, decision: str | None, reason: str | 
                 "publications": [{"record": r, "title": known[r][0]["title"], "kind": known[r][0]["kind"],
                                   "path": known[r][2].relative_to(store.root).as_posix()} for r in refs[-limit:] if r in known],
                 "omitted": max(0, len(refs) - limit), "decisions": DECISIONS,
-                "questions": ["Experience retention: is there a useful observation, finding, correction, or limit worth preserving as an episode, even without a reusable lesson? Check for an existing record before duplicating it.",
+                "comparison_route": ["work", "consolidate", identifier],
+                "questions": ["Does new evidence change earlier understanding? When useful, use work consolidate for a bounded comparison (CONSOLIDATION_REFERENCE.md); no pass is required for every checkpoint.",
+                              "Experience retention: is there a useful observation, finding, correction, or limit worth preserving as an episode, even without a reusable lesson? Check for an existing record before duplicating it.",
                               "Practice learning: does the evidence warrant a scoped proposed lesson, review, or reconciliation, separately from retaining the experience?",
                               "Self-assessment: is there evidence about the agent's own behavior that warrants a recorded change, rather than merely a fact about the subject?",
                               "Are local support, untested transfer, and causal attribution being assessed separately?",
@@ -596,7 +598,8 @@ def retrieve(api, store, query: list[str], limit: int, scope: str | None, kind: 
     return search_page(api, store, query, limit, scope, kind, work_id, history=history, offset=offset)["candidates"]
 
 
-def ranked_page(api, store, catalogue, query, limit, scope, kind, work_id, *, history, offset):
+def rank_candidates(api, store, catalogue, query, scope, kind, work_id, *, history, work=None):
+    """Cached lexical ranking only; callers must validate selected canonical records."""
     vocabulary, _ = api.decode(api.read(store.path("memory/vocabulary.md")))
     groups = vocabulary.get("groups")
     api.require(isinstance(groups, list) and all(isinstance(g, list) and all(isinstance(t, str) for t in g) for g in groups), "Invalid vocabulary groups")
@@ -617,7 +620,8 @@ def ranked_page(api, store, catalogue, query, limit, scope, kind, work_id, *, hi
     frequency = {term: sum(term in d[2] or term in d[3] for d in docs) for term in terms}
     rejected = set()
     if work_id:
-        work, _ = read_work(api, store, work_id)
+        if work is None:
+            work, _ = read_work(api, store, work_id)
         rejected = {(r.get("record"), r.get("query")) for r in work["rejections"] if r.get("activity_revision") == work["activity_revision"]}
     normalized_query = query_key(query)
     results = []
@@ -641,7 +645,11 @@ def ranked_page(api, store, catalogue, query, limit, scope, kind, work_id, *, hi
             item.update(status="observation-not-instruction", created_at=meta["created_at"],
                         session=meta["session"], corrects=meta["corrects"])
         results.append(item)
-    ordered = sorted(results, key=lambda r: (-r["score"], r["id"], r.get("revision", 0)))
+    return sorted(results, key=lambda r: (-r["score"], r["id"], r.get("revision", 0)))
+
+
+def ranked_page(api, store, catalogue, query, limit, scope, kind, work_id, *, history, offset):
+    ordered = rank_candidates(api, store, catalogue, query, scope, kind, work_id, history=history)
     selected = ordered[offset:offset + limit]
     lessons = {}
     for item in selected:
@@ -769,6 +777,10 @@ def add_parser(sub) -> None:
     notes = p.add_mutually_exclusive_group()
     notes.add_argument("--notes", help="Replace the current WORK.md body with concise Markdown")
     notes.add_argument("--notes-file", type=Path, help="Read replacement notes from UTF-8; WORK.md remains authoritative")
+    p = actions.add_parser("consolidate", help="Bounded comparison packet; no learning changes")
+    p.add_argument("id"); p.add_argument("--records", nargs="+", default=[])
+    p.add_argument("--query", nargs="+", default=[])
+    p.add_argument("--limit", type=int, default=12); p.add_argument("--offset", type=int, default=0)
     p = actions.add_parser("checkpoint"); p.add_argument("id")
     p.add_argument("--decision", choices=DECISIONS); p.add_argument("--reason")
     p.add_argument("--records", nargs="*", default=[]); p.add_argument("--next-review")
@@ -808,6 +820,8 @@ def run(api, store, args) -> dict:
         notes = api.read(args.notes_file.absolute()) if args.notes_file is not None else args.notes
         return update(api, store, args.id, args.status, args.next_action,
                       summary_text=args.summary, notes=notes)
+    if command == "consolidate":
+        return api.local_module("mettle_consolidate").packet(api, store, args.id, args.records, args.query, args.limit, args.offset)
     if command == "checkpoint":
         return checkpoint(api, store, args.id, args.decision, args.reason, args.records, args.next_review, args.limit)
     if command == "evidence":

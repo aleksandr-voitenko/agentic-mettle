@@ -10,7 +10,7 @@ help an agent develop through its history, not merely recall that history.
 > Can the agent make a better-informed decision because of an earlier experience,
 > recognize when its lesson does not apply, and revise it when evidence changes?
 
-**Version 0.4.0 — experimental release.** This repository provides an operating
+**Version 0.5.0 — experimental release.** This repository provides an operating
 protocol, a standard-library-only Python helper, runtime configuration adapters,
 record validation, and offline tests. It does not establish reliable reflective
 identity across hundreds of real conversations. Live runtime integration and
@@ -105,10 +105,10 @@ rather than Loom-specific storage. See the [workspace guide](docs/workspaces.md#
 
 Upgrade normally from this source, preserving profiles. Existing migrated 0.2.1
 installations need no additional migration or reset. The release version is
-**0.4.0**; accepted-record schema 1 and workspace format 2 are unchanged. Internal
+**0.5.0**; accepted-record schema 1 and workspace format 2 are unchanged. Internal
 format identifiers remain distinct from the removed product-stage label.
 
-Version 0.4.0 adds targeted `show`, search, and navigation through a disposable
+Version 0.4.0 added targeted `show`, search, and navigation through a disposable
 local catalogue. Warm reads validate selected canonical records and relevant
 references; publication and explicit `check`/`reindex` still validate the full
 archive. `search --kind lessons --history` explicitly finds older wording and
@@ -294,12 +294,14 @@ existing-project/
     ├── LOCATION.md                        # Generated root/bootstrap location
     ├── REFERENCE.md                       # Record schema and workflow
     ├── WORK_REFERENCE.md                  # Workspace and migration commands
+    ├── CONSOLIDATION_REFERENCE.md         # On-demand comparison workflow
     ├── tools/
     │   ├── mettle.py                      # Core helper
     │   ├── mettle_installer.py            # Guided setup and profile constructors
     │   ├── mettle_work.py                 # Workspaces, evidence, retrieval
     │   ├── mettle_migrate.py              # Explicit legacy-file migration
-    │   └── mettle_catalogue.py            # Disposable lookup and targeted validation
+    │   ├── mettle_catalogue.py            # Disposable lookup and targeted validation
+    │   └── mettle_consolidate.py          # Bounded read-only comparison packets
     ├── .gitignore                         # Excludes mutable state
     └── state/
         ├── installation.json             # Local placement/adapter choices
@@ -395,7 +397,16 @@ claim a causal improvement from a single successful result or a fluent explanati
 [The decision-to-review trace](docs/records.md#decision-to-review-trace) uses the
 existing schema; no new record kind is required.
 
-### 4. Reconcile without erasing history
+### 4. Compare and reconcile without erasing history
+
+When a correction or later outcome warrants comparison, use
+`work consolidate W-ID --query TERMS` with the installed command prefix.
+The bounded packet links observations, exact lesson revisions and known
+counterevidence; it makes no learning decision or publication. The agent may
+retain, qualify, correct, narrow, merge, contest, retire, or defer using existing
+records and checkpoints. See the [consolidation guide](docs/consolidation.md),
+installed as `CONSOLIDATION_REFERENCE.md`, and the
+[manual pilot](docs/evaluation.md#manual-consolidation-pilot).
 
 Use explicit ADD, REVISE, LINK_EVIDENCE, MERGE, MARK_CONTESTED, or RETIRE decisions.
 Publish a new lesson revision, retaining evidence references and contradictory

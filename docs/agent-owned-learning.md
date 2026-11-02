@@ -150,3 +150,19 @@ measures Mettle's learning behavior. The separate whole-agent criterion also
 needs a runtime, activity policy, continuity, and shared environment. Neither is
 satisfied merely by accumulating more notes, looking confident, or having an
 operator inspect an approval screen.
+
+## Bounded comparison (0.5.0)
+
+When new evidence bears on earlier understanding, the agent can request
+`work consolidate W-ID` during work or from checkpoint reflection. It uses existing
+activity publications, explicit accepted references, and focused lexical discovery.
+The helper selects pointers and previews; the agent assesses relevance, source
+dependence, scope and meaning, then uses existing publication/checkpoint procedures.
+A packet changes no learning state. Retaining a subject finding without a practice
+change and deferring with a concrete revisit condition remain valid outcomes.
+
+The installed [consolidation reference](consolidation.md) contains the short
+comparison procedure, outcome mapping and continuity/recovery details. Authored
+integration tests cover complete supported workflows; they are not evidence that
+an unaided model recognizes triggers or judges correctly. The manual scenario in
+[evaluation](evaluation.md#manual-consolidation-pilot) has not been run with a model.
