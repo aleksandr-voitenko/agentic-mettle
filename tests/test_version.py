@@ -39,11 +39,12 @@ class VersionTest(unittest.TestCase):
             root = Path(temporary)
             mettle.install(root, [])
             package = root / mettle.PACKAGE
-            for filename in ("mettle.py", "mettle_installer.py", "mettle_work.py", "mettle_migrate.py", "mettle_catalogue.py"):
+            for filename in ("mettle.py", "mettle_installer.py", "mettle_work.py", "mettle_migrate.py", "mettle_catalogue.py", "mettle_consolidate.py"):
                 self.assertEqual((package / "tools" / filename).read_bytes(), (ROOT / filename).read_text(encoding="utf-8").encode("utf-8"))
             for installed, source in (("PERSONALITY.md", "PERSONALITY.md"),
                                       ("REFERENCE.md", "docs/records.md"),
-                                      ("WORK_REFERENCE.md", "docs/workspaces.md")):
+                                      ("WORK_REFERENCE.md", "docs/workspaces.md"),
+                                      ("CONSOLIDATION_REFERENCE.md", "docs/consolidation.md")):
                 self.assertEqual((package / installed).read_bytes(), (ROOT / source).read_text(encoding="utf-8").encode("utf-8"))
             self.assertIn(f"Version **{mettle.VERSION}**", (package / "WORK_REFERENCE.md").read_text(encoding="utf-8"))
 

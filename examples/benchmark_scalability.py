@@ -28,11 +28,21 @@ from reference_retrieval_031 import retrieve_031
 def worker(root, command, reference):
     counts = {"canonical_reads": 0, "current_view_reads": 0, "other_reads": 0,
               "derived_writes": 0, "catalogue_writes": 0, "other_writes": 0,
-              "decodes": 0, "snapshot_calls": 0, "inventory_passes": 0, "inventory_entries": 0, "catalogue_connections": 0}
+              "decodes": 0, "snapshot_calls": 0, "inventory_passes": 0, "inventory_entries": 0, "catalogue_connections": 0, "ranking_queries": 0, "metadata_rows": 0}
     archives = []
     original_read, original_write, original_snapshot = m.read, m.write_atomic, m.Store.snapshot
 
     original_decode, original_inventory, original_connect = m.decode, c.inventory, c.connect
+    original_rank, original_metadata = w.rank_candidates, c.Catalogue.metadata
+
+    def rank(*args, **kwargs):
+        counts["ranking_queries"] += 1
+        return original_rank(*args, **kwargs)
+
+    def metadata(catalogue):
+        for meta in original_metadata(catalogue):
+            counts["metadata_rows"] += 1
+            yield meta
 
     def decode(text):
         counts["decodes"] += 1
@@ -88,11 +98,13 @@ def worker(root, command, reference):
             mock.patch.object(m, "decode", side_effect=decode), \
             mock.patch.object(c, "inventory", side_effect=inventory), \
             mock.patch.object(c, "connect", side_effect=connect), \
+            mock.patch.object(w, "rank_candidates", side_effect=rank), \
+            mock.patch.object(c.Catalogue, "metadata", metadata), \
             mock.patch.object(c, "open_catalogue", reference_catalogue if reference else c.open_catalogue), \
             mock.patch.object(w, "search_page", reference_page if reference else w.search_page), \
             contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
         start = time.perf_counter()
-        code = m.main([*command, "--root", root])
+        code = m.main(["work", "--root", root, *command[1:]] if command[0] == "work" else [*command, "--root", root])
         elapsed = time.perf_counter() - start
     if code:
         raise RuntimeError(errors.getvalue())
@@ -141,6 +153,20 @@ def benchmark(args):
             m.install(root, [])
             store = m.Store(root)
             _, lessons = seed(store, episodes=episodes, lessons=args.lessons, domains=args.domains)
+            if args.consolidation_only:
+                with store.lock():
+                    activity = w.start(m, store, "Synthetic consolidation", "component/0")['id']
+                entry = {"episodes": episodes, "packet": []}
+                for query in ("needle00000", "amberwidget"):
+                    command = ["work", "consolidate", activity, "--records", "E-00001", "--query", query, "--limit", "12"]
+                    runs = {"cold": [], "warm": []}
+                    for _ in range(args.repetitions):
+                        store.path(c.RELATIVE).unlink(missing_ok=True)
+                        runs["cold"].append(run_command(root, command))
+                        runs["warm"].append(run_command(root, command))
+                    entry["packet"].append({"query": query, "runs": runs})
+                report["archives"].append(entry)
+                continue
             entry = {"episodes": episodes, **sizes(store, lessons), "search": [], "cold_show": [], "warm_show": []}
             for _ in range(args.repetitions):
                 store.path(c.RELATIVE).unlink(missing_ok=True)
@@ -196,6 +222,7 @@ def main():
     parser.add_argument("--lessons", type=int, default=100)
     parser.add_argument("--domains", type=int, default=10)
     parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument("--consolidation-only", action="store_true", help="Measure bounded packets instead of the PR1/PR2 comparison")
     parser.add_argument("--navigation-stress", action="store_true")
     parser.add_argument("--worker", help=argparse.SUPPRESS)
     parser.add_argument("--command-json", help=argparse.SUPPRESS)

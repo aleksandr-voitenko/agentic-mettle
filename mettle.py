@@ -21,7 +21,7 @@ import sys
 import tempfile
 import uuid
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 PACKAGE = ".agent-personality"
 STATUSES = {"proposed", "active", "contested", "retired", "superseded"}
 KINDS = {"episode": "E", "lesson": "L", "review": "V", "reconciliation": "C"}
@@ -838,6 +838,8 @@ def install(root: Path, runtimes: list[str], configure_only: bool = False, pytho
             safe_path(root, PACKAGE + "/tools/mettle_installer.py"): read(source / "mettle_installer.py"),
             safe_path(root, PACKAGE + "/tools/mettle_work.py"): read(source / "mettle_work.py"),
             safe_path(root, PACKAGE + "/tools/mettle_migrate.py"): read(source / "mettle_migrate.py"),
+            safe_path(root, PACKAGE + "/tools/mettle_consolidate.py"): read(source / "mettle_consolidate.py"),
+            safe_path(root, PACKAGE + "/CONSOLIDATION_REFERENCE.md"): read(source / "docs/consolidation.md"),
             safe_path(root, PACKAGE + "/tools/mettle_catalogue.py"): read(source / "mettle_catalogue.py"),
             safe_path(root, PACKAGE + "/WORK_REFERENCE.md"): read(source / "docs/workspaces.md"),
             safe_path(root, PACKAGE + "/PERSONALITY.md"): read(source / "PERSONALITY.md"),

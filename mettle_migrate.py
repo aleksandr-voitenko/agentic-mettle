@@ -12,7 +12,7 @@ import re
 
 import mettle_work as work
 
-STABLE = {"PERSONALITY.md", "LOCATION.md", "REFERENCE.md", "WORK_REFERENCE.md", ".gitignore"}
+STABLE = {"PERSONALITY.md", "LOCATION.md", "REFERENCE.md", "WORK_REFERENCE.md", "CONSOLIDATION_REFERENCE.md", ".gitignore"}
 JOURNAL_ID = re.compile(r"M-[0-9a-f]{16}\Z")
 MAX_SCAN = 64_000_000
 MAX_FILE = 16_000_000
@@ -109,7 +109,7 @@ def plan_unlocked(api, store) -> dict:
         if rel in STABLE:
             continue
         data = read_bytes(api, path)
-        backup = bool(re.fullmatch(r"(?:tools/)?(?:mettle(?:_installer|_work|_migrate|_catalogue)?\.py|PERSONALITY\.md|LOCATION\.md|REFERENCE\.md|WORK_REFERENCE\.md|\.gitignore)\.mettle-backup-[0-9a-f]{8}", rel))
+        backup = bool(re.fullmatch(r"(?:tools/)?(?:mettle(?:_installer|_work|_migrate|_catalogue|_consolidate)?\.py|PERSONALITY\.md|LOCATION\.md|REFERENCE\.md|WORK_REFERENCE\.md|CONSOLIDATION_REFERENCE\.md|\.gitignore)\.mettle-backup-[0-9a-f]{8}", rel))
         if backup:
             category = "backup"
         elif rel.startswith("tools/"):

@@ -1,6 +1,6 @@
 # Activity workspaces, retrieval, and safe legacy migration
 
-Version **0.4.0**, experimental release. This adds working-state
+Version **0.5.0**, experimental release. This adds working-state
 management, not another personality, an autonomous scheduler, or a new accepted
 memory schema. Normal learning remains agent-owned within its existing mandate.
 
@@ -554,3 +554,15 @@ queue, not permission to delete referenced or unknown material. When automatic
 migration refuses a case, ask the agent to inspect those specific paths and report
 unpublished differences or references; do not ask it to clear the package root
 by wildcard.
+
+## Bounded comparison during an activity (0.5.0)
+
+`work consolidate W-ID --records E-ID L-ID@2 --query TERMS --limit 12`
+assembles a read-only review packet. Omit `--records` to start from recent accepted
+activity publications; a query can discover earlier understanding across activities.
+The packet is not a checkpoint, a publication, or proof of an applied reconciliation.
+Use the returned continuation/detail arguments and inspect full records before
+judging. Save current comparison and actual outputs in ordinary WORK.md notes.
+The [consolidation guide](consolidation.md), installed as
+`CONSOLIDATION_REFERENCE.md`, describes bounded discovery, comparison, and outcomes.
+Existing checkpoint decisions, expected-revision guards and close rules are unchanged.
