@@ -16,7 +16,8 @@ python examples/benchmark_scalability.py --consolidation-only --episodes 1000 50
 ```
 
 Measured locally: macOS 27.0.1 arm64, Python 3.14.7, temporary local filesystem,
-three repetitions in fresh subprocesses. The 1,000 and 5,000 episode sizes were
+three repetitions in fresh subprocesses, rerun after the correction-discovery fix.
+The 1,000 and 5,000 episode sizes were
 run; 10,000 remains available opt-in. Each archive has 100 proposed single-revision
 lessons in ten domains, originating from E-00000, plus an empty activity. The
 explicit seed E-00001 is unrelated; narrow `needle00000` matches one lesson and
@@ -26,10 +27,10 @@ fixture; regression scenarios exercise those links separately.
 
 | Episodes | Query | Cold canonical reads | Warm canonical reads | Packet UTF-8 bytes | Cold median process s | Warm median process s |
 | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| 1,000 | narrow | 1,103 | 3 | 3,397 | 0.718 | 0.245 |
-| 1,000 | broad | 1,107 | 7 | 7,018 | 0.722 | 0.250 |
-| 5,000 | narrow | 5,103 | 3 | 3,397 | 2.596 | 0.771 |
-| 5,000 | broad | 5,107 | 7 | 7,018 | 2.625 | 0.826 |
+| 1,000 | narrow | 1,103 | 3 | 3,473 | 0.715 | 0.247 |
+| 1,000 | broad | 1,107 | 7 | 7,094 | 0.721 | 0.253 |
+| 5,000 | narrow | 5,103 | 3 | 3,473 | 2.621 | 0.777 |
+| 5,000 | broad | 5,107 | 7 | 7,094 | 2.627 | 0.779 |
 
 Warm calls: zero snapshots, one catalogue connection, one ranking call, 1,100 or
 5,100 canonical inventory entries and cached metadata rows, zero derived/cache
@@ -40,6 +41,14 @@ entries, not syscall counts; catalogue connections are not physical SQLite page
 reads. Process timings include instrumented wrapper/interpreter startup. Cold
 means no catalogue, not flushed OS caches. These warm OS-cache local timings are
 not Windows predictions or evidence of improved model learning.
+
+The correction-discovery follow-up adds 76 bytes of review-expansion disclosure
+to these packets (previously 3,397 / 7,018 bytes at e1c8985); read counts are
+unchanged in this no-review benchmark fixture. Separate normal-publication tests
+cover correction → originating evidence → lesson and lesson → supporting review
+→ source episode → correction, including activity seeds and priority over lexical
+matches. A nine-review fixture verifies the eight-review expansion cap, byte/count
+bounds, pagination and executable continuation for unexamined source dependencies.
 
 Deterministic regression guards cover item/serialized-byte bounds, complete
 pagination in an unchanged store, optional preview removal, exact oversized-path

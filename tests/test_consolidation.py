@@ -102,6 +102,92 @@ class ConsolidationTest(unittest.TestCase):
         empty = self.packet(refs=['E-later'], query=['unrelatedterm'])
         self.assertIn("L-cache@1", {i['ref'] for i in empty['items']})  # Direct link wins.
 
+    def test_correction_discovers_guidance_based_on_corrected_observation(self):
+        self.initial()
+        with self.store.lock():
+            later = w.start(m, self.store, 'Inspect a later correction', 'cache')['id']
+        self.publish(self.text('episode', 'E-correction',
+                               'The original interpretation was incomplete; compare its scope',
+                               corrects=['E-origin']), activity=later)
+        before = self.protected()
+        for refs in ([], ['E-correction']):
+            with self.subTest(refs=refs):
+                packet = self.packet(refs, activity=later)
+                items = {item['ref']: item for item in packet['items']}
+                self.assertTrue({'E-correction', 'E-origin', 'L-cache@1'} <= items.keys())
+                self.assertIn('corrected observation', items['L-cache@1']['reason'])
+                self.assertEqual(items['L-cache@1']['status'], 'proposed')
+                self.assertIsNone(packet['next_argv'])
+        self.assertEqual(self.protected(), before)
+
+    def supported_lesson(self, count=1):
+        self.initial()
+        reviews = []
+        for n in range(count):
+            self.episode(f'E-support-{n:02d}', 'Reported successful cache test; inspect the source')
+            self.review(f'V-support-{n:02d}', f'E-support-{n:02d}', 'support')
+            reviews.append(f'V-support-{n:02d}')
+        self.reconcile('C-link', evidence=reviews, operation='LINK_EVIDENCE')
+        self.revise('C-link', status='active', support=reviews)
+
+    def test_lesson_surfaces_correction_to_review_source_before_lexical_matches(self):
+        self.supported_lesson()
+        self.episode('E-support-correction', 'Inspected log: the supposedly executed test did not run',
+                     corrects=['E-support-00'])
+        before = self.protected()
+        packet = self.packet(['L-cache@2'])
+        items = {item['ref']: item for item in packet['items']}
+        self.assertTrue({'L-cache@2', 'V-support-00', 'E-support-00', 'E-support-correction'} <= items.keys())
+        self.assertEqual(items['E-support-correction']['reason'], 'corrects E-support-00')
+        self.assertEqual(packet['omissions']['counterevidence_known'], 1)
+        self.assertEqual(packet['omissions']['counterevidence_not_on_page'], 0)
+        self.assertTrue(items['V-support-00']['source_episodes_expanded'])
+        with mock.patch.object(c, 'inventory', wraps=c.inventory) as inventory, \
+             mock.patch.object(c, 'connect', wraps=c.connect) as connections, \
+             mock.patch.object(m.Store, 'snapshot', wraps=self.store.snapshot) as snapshots:
+            short = self.packet(['L-cache@2'], ['cache'], limit=2)
+        self.assertEqual([item['ref'] for item in short['items']], ['L-cache@2', 'E-support-correction'])
+        self.assertEqual((inventory.call_count, connections.call_count, snapshots.call_count), (1, 1, 0))
+        # A correction seed also reaches practices through reviews, not just origin.
+        from_correction = self.packet(['E-support-correction'])
+        self.assertTrue({'V-support-00', 'L-cache@1', 'L-cache@2'} <= {i['ref'] for i in from_correction['items']})
+        self.assertEqual(self.protected(), before)  # No mechanical demotion or publication.
+
+    def test_unexpanded_review_sources_have_bounded_actionable_continuations(self):
+        count = consolidation.MAX_REVIEW_CONTEXTS + 1
+        self.supported_lesson(count)
+        last_review = f'V-support-{count - 1:02d}'
+        self.episode('E-hidden-correction', 'The final reported test had not run',
+                     corrects=[f'E-support-{count - 1:02d}'])
+        before = self.protected()
+        first = self.packet(['L-cache@2'], limit=30)
+        self.assertEqual(first['omissions']['review_sources_not_expanded'], 1)
+        self.assertEqual(first['omissions']['review_sources_next_argv'],
+                         ['work', 'consolidate', self.work, '--records', last_review])
+        self.assertEqual(first['omissions']['counterevidence_known'], 0)
+        items, page = {}, first
+        while True:
+            self.assertLessEqual(len(consolidation.serialized(page).encode('utf-8')), consolidation.MAX_BYTES)
+            self.assertLessEqual(len(page['items']), 30)
+            for item in page['items']:
+                self.assertNotIn(item['ref'], items)
+                items[item['ref']] = item
+            if page['next_argv'] is None:
+                break
+            page = self.packet(['L-cache@2'], limit=30, offset=int(page['next_argv'][-1]))
+        self.assertEqual(len(items), first['total_selected'])
+        self.assertFalse(items[last_review]['source_episodes_expanded'])
+        self.assertEqual(sum(i.get('source_episodes_expanded', False) for i in items.values()),
+                         consolidation.MAX_REVIEW_CONTEXTS)
+        self.assertNotIn('E-hidden-correction', items)
+        self.assertEqual(items[last_review]['expand_sources_argv'], first['omissions']['review_sources_next_argv'])
+        continued = self.cli(*first['omissions']['review_sources_next_argv'])
+        self.assertEqual(continued.returncode, 0, continued.stderr)
+        continued = json.loads(continued.stdout)
+        self.assertIn('E-hidden-correction', {i['ref'] for i in continued['items']})
+        self.assertEqual(continued['omissions']['counterevidence_known'], 1)
+        self.assertEqual(self.protected(), before)
+
     def test_narrowing_preserves_history_and_counterevidence(self):
         original = self.initial()
         original_bytes = original.read_bytes()

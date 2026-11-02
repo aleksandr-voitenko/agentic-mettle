@@ -11,10 +11,14 @@ Selection starts with up to eight explicit references, or eight recent distinct
 activity publications. A focused query contributes up to five historical lesson
 matches using the existing lexical ranking. Direct relationships take priority
 over incidental matches. Up to eight related lesson revisions supply context;
-their immediate evidence, reviews, corrections, and replacement links are exposed
-without recursive graph traversal. Pagination covers this selected set, not the
-whole archive. Omitted seeds, lexical matches, context expansion, counterevidence,
-and page items are reported separately with detail/continuation routes.
+their immediate evidence, reviews, corrections, and replacement links are exposed.
+A correction seed also uses its direct corrected observations for reverse
+discovery of dependent reviews/lessons. Up to eight review records (explicit inputs
+first, then counterexamples, then other reviews) expose their source episode
+pointers before correction lookup. These are fixed evidence paths, not recursive
+graph traversal. Pagination covers this selected set, not the whole archive.
+Omitted seeds, lexical matches, lesson/review expansion, counterevidence and page
+items are reported separately with detail/continuation routes.
 
 Each page has at most 30 items (default 12) and 16,000 serialized UTF-8 bytes,
 including JSON indentation, notices, and continuations. Previews are optional;
@@ -106,7 +110,15 @@ unexpanded lesson contexts, and known counterevidence absent from this page
 incidental matches, but explicit seeds take first priority. Counterexample items
 say whether the current lesson incorporates them. “None included” never establishes
 “none exists.” Reviews point to exact lesson revisions; inspect their full record
-for source episodes and applicability.
+for source conditions and applicability. `source_episodes_expanded` marks reviews
+whose direct source episode pointers were included in correction discovery.
+`review_sources_not_expanded` counts reviews not examined along that path;
+`review_sources_next_argv` expands the first such review as an explicit input.
+An unexpanded review item also has its own `expand_sources_argv`. These routes can
+reveal additional corrections even when `counterevidence_known` is zero. They do
+not imply that the review or practice is false. Item/byte pagination still applies
+to all source pointers and discovered corrections; arbitrary correction chains
+and the rest of the evidence graph are not recursively followed.
 
 Use `next_argv` for the rest of this selected set; on an unchanged store pages are
 deterministic and non-overlapping. Use `lexical_next_argv` for additional historical

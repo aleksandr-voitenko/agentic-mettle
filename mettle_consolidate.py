@@ -7,6 +7,7 @@ import re
 MAX_BYTES = 16_000
 MAX_SEEDS = 8
 MAX_CONTEXTS = 8
+MAX_REVIEW_CONTEXTS = 8
 LEXICAL_LIMIT = 5
 
 
@@ -60,6 +61,10 @@ def packet(api, store, identifier, records=(), query=(), limit=12, offset=0):
             if counterevidence:
                 counter.add(ref)
 
+        def review_sources(ref):
+            for target in metadata[ref]["episodes"]:
+                add(target, f"observation for {ref}", 3)
+
         def edges(ref):
             meta = metadata[ref]
             kind = meta["kind"]
@@ -69,8 +74,7 @@ def packet(api, store, identifier, records=(), query=(), limit=12, offset=0):
             elif kind == "review":
                 target = f"{meta['lesson']}@{meta['lesson_revision']}"
                 add(target, f"assessed by {ref}")
-                for target in meta["episodes"]:
-                    add(target, f"observation for {ref}", 3)
+                review_sources(ref)
             elif kind == "reconciliation":
                 for target in meta["inputs"] + meta["evidence"]:
                     add(target, f"input/evidence for plan {ref}", 3)
@@ -83,17 +87,23 @@ def packet(api, store, identifier, records=(), query=(), limit=12, offset=0):
         for ref in seeds:
             add(ref, "explicit input" if records else "activity publication", 0)
             edges(ref)
-        seed_set = set(seeds)
-        # Reverse discovery across activities uses cached metadata, not bodies.
+        corrected = {target for ref in seeds if metadata[ref]["kind"] == "episode"
+                     for target in metadata[ref]["corrects"]}
+        discovery_inputs = set(seeds) | corrected
+        # One correction hop can expose the observations behind earlier guidance.
+        # Reverse discovery across activities uses cached metadata, not bodies;
+        # newly found episodes do not recursively extend these discovery inputs.
         for ref, meta in metadata.items():
             kind = meta["kind"]
-            if kind == "review" and seed_set.intersection(meta["episodes"]):
-                add(ref, "review of triggering observation")
+            if kind == "review" and discovery_inputs.intersection(meta["episodes"]):
+                add(ref, "review of corrected observation" if corrected.intersection(meta["episodes"])
+                    else "review of triggering observation")
                 add(f"{meta['lesson']}@{meta['lesson_revision']}", f"assessed by {ref}")
-            elif kind == "lesson" and (meta == heads[meta["id"]] or seed_set.intersection(meta["reconciliations"])):
-                if seed_set.intersection(meta["origin"] + meta["support"] + meta["counterevidence"] + meta["reconciliations"]):
-                    add(ref, "lesson referencing input")
-            elif kind == "reconciliation" and seed_set.intersection(meta["evidence"] + meta["inputs"]):
+            elif kind == "lesson" and (meta == heads[meta["id"]] or discovery_inputs.intersection(meta["reconciliations"])):
+                if discovery_inputs.intersection(meta["origin"] + meta["support"] + meta["counterevidence"] + meta["reconciliations"]):
+                    add(ref, "lesson referencing corrected observation" if corrected.intersection(meta["origin"])
+                        else "lesson referencing input")
+            elif kind == "reconciliation" and discovery_inputs.intersection(meta["evidence"] + meta["inputs"]):
                 add(ref, "reconciliation plan referencing input", 3)
                 for target in meta["inputs"]:
                     add(target, f"input to plan {ref}")
@@ -112,10 +122,8 @@ def packet(api, store, identifier, records=(), query=(), limit=12, offset=0):
                           key=lambda r: (candidates[r][0], r))
         for ref in contexts[:MAX_CONTEXTS]:
             edges(ref)
-        # One final reverse pass prioritizes all known counterexamples for the
-        # discovered lesson IDs, including ones absent from current evidence.
+        # Include reviews absent from current evidence before expanding sources.
         lesson_ids = {metadata[r]["id"] for r in candidates if metadata[r]["kind"] == "lesson"}
-        episode_ids = {r for r in candidates if metadata[r]["kind"] == "episode"}
         for ref, meta in metadata.items():
             if meta["kind"] == "review" and meta["lesson"] in lesson_ids:
                 target = f"{meta['lesson']}@{meta['lesson_revision']}"
@@ -123,7 +131,19 @@ def packet(api, store, identifier, records=(), query=(), limit=12, offset=0):
                 state = "incorporated" if ref in heads[meta["lesson"]]["counterevidence"] else "pending"
                 reason = f"counterexample for {target}; {state} in latest" if is_counter else f"{meta['assessment']} review of {target}"
                 add(ref, reason, 1 if is_counter else 3, is_counter)
-            elif meta["kind"] == "episode":
+
+        # Follow only review -> source episodes -> corrections, not a graph walk.
+        # Explicit review seeds are first and were already expanded by edges().
+        reviews = sorted((r for r in candidates if metadata[r]["kind"] == "review"),
+                         key=lambda r: (candidates[r][0], r))
+        expanded_reviews = set(reviews[:MAX_REVIEW_CONTEXTS])
+        unexpanded_reviews = reviews[MAX_REVIEW_CONTEXTS:]
+        for ref in reviews[:MAX_REVIEW_CONTEXTS]:
+            if ref not in seeds:
+                review_sources(ref)
+        episode_ids = {r for r in candidates if metadata[r]["kind"] == "episode"}
+        for ref, meta in metadata.items():
+            if meta["kind"] == "episode":
                 targets = sorted(episode_ids.intersection(meta["corrects"]))
                 if targets:
                     add(ref, f"corrects {targets[0]}", 1, True)
@@ -134,6 +154,9 @@ def packet(api, store, identifier, records=(), query=(), limit=12, offset=0):
         if query:
             base_argv += ["--query=" + " ".join(query)]
         base_argv += ["--limit", str(limit)]
+
+        def expand_sources(ref):
+            return ["work", "consolidate", identifier, "--records", ref]
 
         def page(items, end, oversized=()):
             included = {item["ref"] for item in items}
@@ -150,6 +173,8 @@ def packet(api, store, identifier, records=(), query=(), limit=12, offset=0):
                     "lexical_next_argv": ["search", "--kind", "lessons", "--history", "--work", identifier,
                                           "--offset", str(LEXICAL_LIMIT), "--limit", "5", "--", *query] if len(ranked) > LEXICAL_LIMIT else None,
                     "lesson_contexts_not_expanded": max(0, len(contexts) - MAX_CONTEXTS),
+                    "review_sources_not_expanded": len(unexpanded_reviews),
+                    "review_sources_next_argv": expand_sources(unexpanded_reviews[0]) if unexpanded_reviews else None,
                     "counterevidence_known": len(counter), "counterevidence_not_on_page": len(counter - included),
                     "path_exceeds_page": list(oversized),
                 },
@@ -171,7 +196,10 @@ def packet(api, store, identifier, records=(), query=(), limit=12, offset=0):
                 item.update(status=meta["status"], latest_revision=head["revision"], latest_status=head["status"],
                             is_latest=latest, current_candidate=latest and meta["status"] not in {"retired", "superseded"})
             elif meta["kind"] == "review":
-                item.update(assessment=meta["assessment"], lesson_ref=f"{meta['lesson']}@{meta['lesson_revision']}")
+                item.update(assessment=meta["assessment"], lesson_ref=f"{meta['lesson']}@{meta['lesson_revision']}",
+                            source_episodes_expanded=ref in expanded_reviews)
+                if ref not in expanded_reviews:
+                    item["expand_sources_argv"] = expand_sources(ref)
                 if meta["assessment"] == "counterexample":
                     item["counterevidence_state"] = "incorporated" if ref in heads[meta["lesson"]]["counterevidence"] else "pending"
             else:
