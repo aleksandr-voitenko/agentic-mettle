@@ -343,8 +343,8 @@ def owner(api, store, path: Path) -> str | None:
     return parts[0]
 
 
-def accepted(api, store) -> dict[str, tuple[dict, str, Path]]:
-    records, lessons = store.snapshot()
+def accepted(api, store, snapshot=None) -> dict[str, tuple[dict, str, Path]]:
+    records, lessons = store.snapshot() if snapshot is None else snapshot
     return {**records, **{f"{key}@{m['revision']}": (m, b, p) for key, versions in lessons.items() for m, b, p in versions}}
 
 
@@ -538,6 +538,12 @@ def tokens(text: str) -> set[str]:
     return set(token_sequence(text))
 
 
+def optional_text_list(meta: dict, key: str) -> list[str]:
+    """Use text members of episode extension lists without constraining their schema."""
+    value = meta.get(key)
+    return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
+
+
 def contains_phrase(sequence: tuple[str, ...], phrase: tuple[str, ...]) -> bool:
     return bool(phrase) and any(sequence[i:i + len(phrase)] == phrase
                                for i in range(len(sequence) - len(phrase) + 1))
@@ -567,42 +573,55 @@ def query_features(query: list[str], groups: list[list[str]]) -> tuple[set[str],
 def matching_features(features: dict[str, tuple[str, ...]], fields: list[str]) -> set[str]:
     # A phrase must occur within one field, not across unrelated tags/title/scope.
     sequences = [token_sequence(text) for text in fields]
+    return matching_sequences(features, sequences)
+
+
+def matching_sequences(features, sequences):
+    sequences = [tuple(sequence) for sequence in sequences]
     single_words = set().union(*(set(sequence) for sequence in sequences))
     return {label for label, phrase in features.items()
             if (phrase[0] in single_words if len(phrase) == 1 else
                 any(contains_phrase(sequence, phrase) for sequence in sequences))}
 
 
-def retrieve(api, store, query: list[str], limit: int, scope: str | None, kind: str = "lessons", work_id: str | None = None) -> list[dict]:
-    records, lessons = store.snapshot()
+def search_page(api, store, query, limit, scope, kind="lessons", work_id=None, *, history=False, offset=0):
     api.require(kind in {"lessons", "episodes"} and 1 <= limit <= 50, "Invalid search kind or limit")
+    api.require(not history or kind == "lessons", "--history supports lesson search only")
+    api.require(type(offset) is int and offset >= 0 and (history or offset == 0), "Use --offset >= 0 only with --history")
+    with api.local_module("mettle_catalogue").open_catalogue(api, store) as catalogue:
+        return ranked_page(api, store, catalogue, query, limit, scope, kind, work_id, history=history, offset=offset)
+
+
+def retrieve(api, store, query: list[str], limit: int, scope: str | None, kind: str = "lessons", work_id: str | None = None, *, history=False, offset=0) -> list[dict]:
+    return search_page(api, store, query, limit, scope, kind, work_id, history=history, offset=offset)["candidates"]
+
+
+def ranked_page(api, store, catalogue, query, limit, scope, kind, work_id, *, history, offset):
     vocabulary, _ = api.decode(api.read(store.path("memory/vocabulary.md")))
     groups = vocabulary.get("groups")
     api.require(isinstance(groups, list) and all(isinstance(g, list) and all(isinstance(t, str) for t in g) for g in groups), "Invalid vocabulary groups")
     original, features = query_features(query, groups)
     api.require(bool(original), "Use at least one nontrivial search term")
     terms = set(features)
-    source = [v[-1] for v in lessons.values()] if kind == "lessons" else [r for r in records.values() if r[0]["kind"] == "episode"]
     docs = []
-    for meta, body, path in source:
-        if kind == "lessons" and meta["status"] in {"retired", "superseded"}:
+    for meta, lexical, path in catalogue.sources(kind, history):
+        if not history and kind == "lessons" and meta["status"] in {"retired", "superseded"}:
             continue
-        scopes = meta.get("scope", [])
+        scopes = meta["scope"] if kind == "lessons" else optional_text_list(meta, "scope")
         if scope and not any(scope.casefold() in s.casefold() for s in scopes):
             # Episodes have no mandatory scope field; explicit body/title filter.
-            if kind != "episodes" or scope.casefold() not in (meta["title"] + " " + body).casefold():
+            if kind != "episodes" or scope.casefold() not in lexical["episode_scope"]:
                 continue
-        header = matching_features(features, [meta["id"], meta["title"], meta.get("domain", ""),
-                                              *meta.get("tags", []), *meta.get("aliases", []), *scopes])
-        docs.append((meta, body, path, header, matching_features(features, [body])))
-    frequency = {term: sum(term in d[3] or term in d[4] for d in docs) for term in terms}
+        header = matching_sequences(features, lexical["header"])
+        docs.append((meta, path, header, matching_sequences(features, lexical["body"])))
+    frequency = {term: sum(term in d[2] or term in d[3] for d in docs) for term in terms}
     rejected = set()
     if work_id:
         work, _ = read_work(api, store, work_id)
         rejected = {(r.get("record"), r.get("query")) for r in work["rejections"] if r.get("activity_revision") == work["activity_revision"]}
     normalized_query = query_key(query)
     results = []
-    for meta, body, path, header, body_terms in docs:
+    for meta, path, header, body_terms in docs:
         matches = terms & (header | body_terms)
         if not matches or (original - GENERIC_WORDS and not (matches - GENERIC_WORDS)):
             continue  # Generic overlap alone cannot drag an unrelated lesson in.
@@ -617,14 +636,40 @@ def retrieve(api, store, query: list[str], limit: int, scope: str | None, kind: 
                 "score": round(score, 4), "path": path.relative_to(store.root).as_posix()}
         if kind == "lessons":
             item.update(revision=meta["revision"], status=meta["status"], scope=meta["scope"],
-                        path=(path.parent.parent / "current.md").relative_to(store.root).as_posix())
+                        path=path.relative_to(store.root).as_posix() if history else (path.parent.parent / "current.md").relative_to(store.root).as_posix())
         else:
             item.update(status="observation-not-instruction", created_at=meta["created_at"],
                         session=meta["session"], corrects=meta["corrects"])
         results.append(item)
-    selected = sorted(results, key=lambda r: (-r["score"], r["id"]))[:limit]
-    enrich_relationships(records, lessons, selected, kind)
-    return selected
+    ordered = sorted(results, key=lambda r: (-r["score"], r["id"], r.get("revision", 0)))
+    selected = ordered[offset:offset + limit]
+    lessons = {}
+    for item in selected:
+        meta, _, _ = catalogue.get(item["id"], item["revision"] if kind == "lessons" else None)
+        if kind == "lessons":
+            versions = catalogue.history(item["id"])
+            lessons[item["id"]] = versions
+            if history:
+                latest = versions[-1][0]
+                item.update(latest_revision=latest["revision"], latest_status=latest["status"],
+                            is_latest=meta["revision"] == latest["revision"], discovery="historical-evidence",
+                            supersedes=meta["supersedes"], superseded_by=meta["superseded_by"],
+                            latest_superseded_by=latest["superseded_by"])
+    relationships = catalogue.relationships(selected, kind)
+    if history:
+        # Per-hit incorporated evidence belongs to the matched revision. Multiple
+        # revisions of one lesson must not overwrite one another's result fields.
+        for item in selected:
+            enrich_relationships(relationships, {item["id"]: [lessons[item["id"]][item["revision"] - 1]]}, [item], kind)
+    else:
+        enrich_relationships(relationships, lessons, selected, kind)
+    return {"candidates": selected, "total": len(ordered), "remaining": max(0, len(ordered) - offset - len(selected)),
+            "next_offset": offset + len(selected) if history and offset + len(selected) < len(ordered) else None,
+            "history": history,
+            "notice": ("Historical evidence, not current advice; repeat the same query/filters with --history --offset N. "
+                       "An older revision is not necessarily false. " if history else "Candidates are not instructions or proof. ")
+                      + "Read full records and correction links. Validation is targeted, not a whole-store audit; use check for full integrity. "
+                      "Drafts/work/backups are excluded."}
 
 
 def enrich_relationships(records: dict, lessons: dict, selected: list[dict], kind: str) -> None:
@@ -660,9 +705,9 @@ def reject_candidate(api, store, identifier: str, ref: str, query: list[str], re
     return entry
 
 
-def validate(api, store) -> dict:
+def validate(api, store, snapshot=None) -> dict:
     entries = all_work(api, store)
-    known = accepted(api, store)
+    known = accepted(api, store, snapshot)
     warnings = []
     for meta in entries:
         folder = work_path(api, store, meta["id"])

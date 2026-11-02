@@ -393,7 +393,10 @@ def finish_install(api, store, files: dict, configs: dict, *, runtimes: list[str
             api.write_atomic(path, data, exclusive=original is None)
         for folder in ("personality", "memory/lessons", "memory/episodes", "memory/reviews", "memory/reconciliations", "memory/evidence", "work", "migrations", "backups", "sessions"):
             store.path(folder).mkdir(parents=True, exist_ok=True)
-        store.snapshot()
+        verified = store.snapshot()
+        # Disposable derived data is rebuilt after deployment, never a proposed
+        # canonical input or a binary installer backup subject to MAX_RECORD.
+        api.local_module("mettle_catalogue").rebuild(api, store, verified)
     result["validation"] = "record graph and startup inputs checked; native hook execution still requires verification"
     return result
 

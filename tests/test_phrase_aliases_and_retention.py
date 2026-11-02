@@ -49,7 +49,7 @@ class RefinementsTest(unittest.TestCase):
 
     def state_hashes(self, relative="memory"):
         return {p.relative_to(self.store.state).as_posix(): w.sha(p.read_bytes())
-                for p in self.store.path(relative).rglob("*") if p.is_file()}
+                for p in self.store.path(relative).rglob("*") if p.is_file() and p != self.store.path("memory/catalogue.sqlite3")}
 
     def test_single_phrase_word_does_not_activate_group(self):
         self.accept("E-policy", "Policy verification")

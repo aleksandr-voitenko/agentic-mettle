@@ -158,6 +158,30 @@ content outside the block, including authorized learned content, is preserved.
 
 ## Existing installations and recovery
 
+### Upgrading targeted access (0.4.0)
+
+Normal source installation deploys all five helper modules, protocol, and
+references, and rebuilds disposable `state/memory/catalogue.sqlite3` from a fully
+validated archive. It preserves existing profiles, custom vocabulary, workspace
+format 2, accepted schema 1, and immutable history. No pilot-file migration or
+record relocation is needed. Missing or incompatible catalogues are disposable;
+an unchanged warm read does not rewrite them.
+
+If an interrupted publication or stale current view blocks preflight, use the
+new source helper first: `python3 -X utf8 mettle.py reindex --repair --root ROOT`
+(or `& $Python -X utf8 .\mettle.py reindex --repair --root $Project` in PowerShell),
+then install normally and run `check`. This validates canonical material and
+reconstructs only derived data. It does not adopt cached bodies to fix damaged
+accepted records. Keep the normal backup and resolve canonical validation errors
+before retrying. An old oversized index can use the same route described below.
+
+Older helpers can read the unchanged canonical formats but lack targeted reads
+and `search --history`. Do not mix old/new writers. After using an old helper,
+restoring a backup, relocating a supported store, or externally editing accepted
+files, reinstall the complete new package and run `reindex --repair`. The cache
+is root/format-bound; no cache migration is required. For the targeted validation
+boundary and metadata-freshness limits, see [record access](records.md#targeted-reads-and-historical-discovery).
+
 ### Upgrading bounded navigation (0.3.1)
 
 A normal source installation rebuilds derived memory navigation and deploys the

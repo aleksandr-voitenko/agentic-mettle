@@ -413,3 +413,16 @@ without tool calls or manual bootstrap. A matching session ID in the helper's
 The hook list also confirmed that the separate nested source repository did not
 discover the parent installation's hook. Desktop UI startup, live resume, and live
 compaction were not exercised by this check.
+
+## Targeted access package (0.4.0)
+
+The installed tools now include `mettle_catalogue.py`; deploy the complete source
+package rather than replacing a single helper. Hook/bootstrap behavior and its
+character budget are unchanged. The disposable SQLite catalogue is private state,
+not an additional startup input, hook, daemon, or provider service. Source install
+rebuilds it from canonical records; existing runtime configuration, authorized
+instruction content, profiles and accepted evidence retain their protections.
+See [upgrade and repair](installer.md#upgrading-targeted-access-040) before mixing
+helper versions or restoring a backup. Ordinary `show`, `search`, and `navigate`
+have the [targeted validation contract](records.md#targeted-reads-and-historical-discovery);
+full `check` remains the whole-store integrity command.

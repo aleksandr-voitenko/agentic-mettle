@@ -1,6 +1,6 @@
 # Agentic Mettle — operating protocol
 
-Protocol version: **0.3.1**. This fixed protocol is operator-maintained.
+Protocol version: **0.4.0**. This fixed protocol is operator-maintained.
 Develop through experience: use evidence to improve and correct future decisions.
 Facts, user preferences, procedures, and assessments of your own behavior are
 different learning outcomes; none automatically establishes another.
@@ -88,7 +88,9 @@ files. Closing deletes nothing; check evidence dependencies before cleanup.
 Search by intended action, component, constraints, and likely failure mode. Repeat
 when a meaningful subtask or correction changes relevance, not before trivial
 commands. Search current lessons first, then `search --kind episodes TERMS` for
-accepted observations; use `show ID` for detail. Work notes, drafts, and backups
+accepted observations; use `show ID` for detail. Use `search --kind lessons --history`
+for earlier wording and retired/superseded guidance, then `show L-ID --revision N`;
+historical hits identify exact revisions, not current advice. Work notes, drafts, and backups
 are not accepted guidance. Do not scan the whole codebase to find personal lessons.
 
 Read the full candidate's scope, status, exceptions, source version, and pending

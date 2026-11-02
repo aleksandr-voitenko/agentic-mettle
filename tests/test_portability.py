@@ -271,7 +271,7 @@ class PortabilityTest(unittest.TestCase):
         for path, content in instructions.items():
             self.assertEqual(path.read_bytes(), content)
         for path in self.store.home.rglob("*"):
-            if path.is_file() and path.suffix != ".pyc":
+            if path.is_file() and path.suffix not in {".pyc", ".sqlite3"}:
                 self.assertNotIn(b"\r", path.read_bytes(), str(path))
                 self.assertFalse(path.read_bytes().startswith(b"\xef\xbb\xbf"), str(path))
 

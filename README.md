@@ -10,7 +10,7 @@ help an agent develop through its history, not merely recall that history.
 > Can the agent make a better-informed decision because of an earlier experience,
 > recognize when its lesson does not apply, and revise it when evidence changes?
 
-**Version 0.3.1 — experimental release.** This repository provides an operating
+**Version 0.4.0 — experimental release.** This repository provides an operating
 protocol, a standard-library-only Python helper, runtime configuration adapters,
 record validation, and offline tests. It does not establish reliable reflective
 identity across hundreds of real conversations. Live runtime integration and
@@ -105,17 +105,19 @@ rather than Loom-specific storage. See the [workspace guide](docs/workspaces.md#
 
 Upgrade normally from this source, preserving profiles. Existing migrated 0.2.1
 installations need no additional migration or reset. The release version is
-**0.3.1**; accepted-record schema 1 and workspace format 2 are unchanged. Internal
+**0.4.0**; accepted-record schema 1 and workspace format 2 are unchanged. Internal
 format identifiers remain distinct from the removed product-stage label.
 
-Version 0.3.1 bounds memory navigation: the root map stays small and `navigate`
-lists domains, while `navigate --domain DOMAIN` lists lesson previews with exact
-continuation commands. Search ranking and learning semantics are unchanged.
-Relationship enrichment now takes one archive pass after result selection;
-publication writes only affected, changed lesson views. Full snapshot validation
-remains. See [navigation and compatibility](docs/records.md#bounded-memory-navigation),
-the [oversized-index upgrade route](docs/installer.md#upgrading-bounded-navigation-031),
-and [synthetic measurements](docs/scalability.md).
+Version 0.4.0 adds targeted `show`, search, and navigation through a disposable
+local catalogue. Warm reads validate selected canonical records and relevant
+references; publication and explicit `check`/`reindex` still validate the full
+archive. `search --kind lessons --history` explicitly finds older wording and
+retired/superseded lessons, with exact revision paths and latest status. Default
+search ranking and current-guidance eligibility are unchanged. Bounded navigation,
+adaptive startup, and selective derived writes from 0.3.1 remain intact. See the
+[read contract and history interface](docs/records.md#targeted-reads-and-historical-discovery),
+[upgrade/recovery route](docs/installer.md#upgrading-targeted-access-040), and
+[synthetic measurements](docs/scalability.md).
 
 ## Working state without package-root clutter
 
@@ -296,7 +298,8 @@ existing-project/
     │   ├── mettle.py                      # Core helper
     │   ├── mettle_installer.py            # Guided setup and profile constructors
     │   ├── mettle_work.py                 # Workspaces, evidence, retrieval
-    │   └── mettle_migrate.py              # Explicit legacy-file migration
+    │   ├── mettle_migrate.py              # Explicit legacy-file migration
+    │   └── mettle_catalogue.py            # Disposable lookup and targeted validation
     ├── .gitignore                         # Excludes mutable state
     └── state/
         ├── installation.json             # Local placement/adapter choices
@@ -307,6 +310,7 @@ existing-project/
         ├── memory/
         │   ├── INDEX.md
         │   ├── vocabulary.md
+        │   ├── catalogue.sqlite3          # Disposable, rebuilt from accepted Markdown
         │   ├── lessons/<domain>/<lesson-id>/
         │   │   ├── current.md
         │   │   └── revisions/0001.md
@@ -507,10 +511,12 @@ is not encryption, access control, synchronization, or backup. Review generated
 absolute-path configurations and backups before committing. See
 [security and privacy](SECURITY.md).
 
-Lexical retrieval can miss paraphrases. Retrieval validates the local record
-graph and ranks the chosen record collection; it does not scan the source tree.
-The current ranker computes term frequencies across candidates without a cached
-search index, so large-memory performance must be measured before scaling.
+Lexical retrieval can miss paraphrases. Warm retrieval validates selected records
+and relevant references; use `check` to audit the entire archive. Each read still
+enumerates canonical file metadata, and search scans cached lexical features to
+compute corpus term frequencies. It does not scan project source code. A missing
+or stale catalogue requires a healthy complete archive to rebuild; metadata
+freshness is not arbitrary tamper detection.
 The [opt-in benchmark](docs/scalability.md) reports local command costs and operation
 counts, including the remaining full-archive validation work.
 There is no measured large-memory performance guarantee. Startup context has an

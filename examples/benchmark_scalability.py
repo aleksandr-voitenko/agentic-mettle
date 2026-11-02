@@ -20,15 +20,47 @@ sys.path.insert(0, str(SOURCE))
 sys.path.insert(0, str(SOURCE / "tests"))
 import mettle as m
 import mettle_work as w
+import mettle_catalogue as c
 from examples.scalability_fixture import CountingRecords, old_indexes, put, record, seed
-from reference_retrieval import retrieve_reference
+from reference_retrieval_031 import retrieve_031
 
 
 def worker(root, command, reference):
     counts = {"canonical_reads": 0, "current_view_reads": 0, "other_reads": 0,
-              "derived_writes": 0, "other_writes": 0}
+              "derived_writes": 0, "catalogue_writes": 0, "other_writes": 0,
+              "decodes": 0, "snapshot_calls": 0, "inventory_passes": 0, "inventory_entries": 0, "catalogue_connections": 0}
     archives = []
     original_read, original_write, original_snapshot = m.read, m.write_atomic, m.Store.snapshot
+
+    original_decode, original_inventory, original_connect = m.decode, c.inventory, c.connect
+
+    def decode(text):
+        counts["decodes"] += 1
+        return original_decode(text)
+
+    def inventory(api, store):
+        entries = original_inventory(api, store)
+        counts["inventory_passes"] += 1
+        counts["inventory_entries"] += len(entries)
+        return entries
+
+    def connect(path):
+        counts["catalogue_connections"] += 1
+        return original_connect(path)
+
+    def reference_page(api, store, query, limit, scope, kind="lessons", work_id=None, **kwargs):
+        return {"candidates": retrieve_031(api, store, query, limit, scope, kind, work_id)}
+
+    @contextlib.contextmanager
+    def reference_catalogue(api, store):
+        # The former show command's complete snapshot lookup; no cached reads.
+        records, lessons = store.snapshot()
+        class Reference:
+            def get(self, identifier, revision=None):
+                if identifier in lessons:
+                    return lessons[identifier][revision - 1 if revision else -1]
+                return records[identifier]
+        yield Reference()
 
     def read(path):
         category = ("canonical_reads" if "revisions" in path.parts or
@@ -38,11 +70,13 @@ def worker(root, command, reference):
         return original_read(path)
 
     def write(path, text, **kwargs):
-        key = "derived_writes" if path.name in {"current.md", "INDEX.md"} else "other_writes"
+        key = ("catalogue_writes" if path.name == "catalogue.sqlite3" else
+               "derived_writes" if path.name in {"current.md", "INDEX.md"} else "other_writes")
         counts[key] += 1
         return original_write(path, text, **kwargs)
 
     def snapshot(store, **kwargs):
+        counts["snapshot_calls"] += 1
         records, lessons = original_snapshot(store, **kwargs)
         counted = CountingRecords(records)
         archives.append(counted)
@@ -51,7 +85,11 @@ def worker(root, command, reference):
     output, errors = io.StringIO(), io.StringIO()
     with mock.patch.object(m, "read", side_effect=read), mock.patch.object(m, "write_atomic", side_effect=write), \
             mock.patch.object(m.Store, "snapshot", snapshot), \
-            mock.patch.object(w, "retrieve", retrieve_reference if reference else w.retrieve), \
+            mock.patch.object(m, "decode", side_effect=decode), \
+            mock.patch.object(c, "inventory", side_effect=inventory), \
+            mock.patch.object(c, "connect", side_effect=connect), \
+            mock.patch.object(c, "open_catalogue", reference_catalogue if reference else c.open_catalogue), \
+            mock.patch.object(w, "search_page", reference_page if reference else w.search_page), \
             contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
         start = time.perf_counter()
         code = m.main([*command, "--root", root])
@@ -93,8 +131,9 @@ def benchmark(args):
               "repetitions": args.repetitions, "lessons": args.lessons, "domains": args.domains,
               "note": "Synthetic local warm-cache measurements, not Windows predictions or LLM behavior. "
                       "Process time includes instrumented wrapper startup; command time includes CLI parsing, locking, "
-                      "full validation, ranking/enrichment and output. Reference swaps only the 0.3.0 retrieval algorithm. "
-                      "Read counts cover mettle.read, not OS metadata operations or installer guard reads.",
+                      "validation, ranking/enrichment and output. Reference uses frozen 0.3.1 retrieval and full-snapshot show. "
+                      "Read counts cover mettle.read; inventory counts are canonical entries enumerated, not stat syscalls. "
+                      "Catalogue connections count logical SQLite opens, not page I/O. Cold means no catalogue, not flushed OS caches.",
               "archives": []}
     for episodes in args.episodes:
         with tempfile.TemporaryDirectory(prefix="mettle-benchmark-") as temporary:
@@ -102,7 +141,16 @@ def benchmark(args):
             m.install(root, [])
             store = m.Store(root)
             _, lessons = seed(store, episodes=episodes, lessons=args.lessons, domains=args.domains)
-            entry = {"episodes": episodes, **sizes(store, lessons), "search": []}
+            entry = {"episodes": episodes, **sizes(store, lessons), "search": [], "cold_show": [], "warm_show": []}
+            for _ in range(args.repetitions):
+                store.path(c.RELATIVE).unlink(missing_ok=True)
+                entry["cold_show"].append(run_command(root, ["show", "E-00000"]))
+                entry["warm_show"].append(run_command(root, ["show", "E-00000"]))
+            entry["before_show"] = run_command(root, ["show", "E-00000"], True)
+            entry["catalogue_bytes"] = store.path(c.RELATIVE).stat().st_size
+            store.path(c.RELATIVE).unlink()
+            entry["cold_search"] = run_command(root, ["search", "--kind", "episodes", "--limit", "3", "amberwidget"])
+            entry["cold_search"].pop("results")
             for kind in ("lessons", "episodes"):
                 for query in ("needle00000", "amberwidget"):
                     runs = {"before": [], "after": []}
@@ -115,6 +163,7 @@ def benchmark(args):
                     entry["search"].append({"kind": kind, "query": query, "limit": 3, "runs": runs,
                                             "median_process_seconds": {key: statistics.median(r["process_seconds"] for r in values)
                                                                        for key, values in runs.items()}})
+            entry["warm_navigate"] = run_command(root, ["navigate", "--domain", "domain-0000", "--limit", "3"])
             entry["bootstrap"] = run_command(root, ["bootstrap"])
             draft = root / "synthetic-episode.md"
             draft.write_text(record("episode", "E-benchmark-new"), encoding="utf-8")

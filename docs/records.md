@@ -248,17 +248,114 @@ and small operator-editable alias groups. Explicit `--kind episodes` searches
 accepted observations and reports correction links, not additional instructions.
 Neither route searches workspaces, backups, or old lesson revisions as advice.
 Safety validation may read supporting records mechanically; they are not all
-injected into model context. Retrieval scans the local record collection rather
-than the millions of lines of project code; no large-archive performance guarantee
-is claimed. Relationship enrichment makes one collection pass for the selected
-result IDs after ranking/limiting, retaining correction links and unresolved
-counterexamples. It no longer scans the archive separately for every match.
-Search, show, navigate, publication, check, installation, and full reindex still
-perform full snapshot validation; search also computes corpus term frequencies.
-This is not constant-time or targeted record access. Bootstrap reads the small map,
-profiles, and work headers without loading accepted history.
-`show --revision N` is an explicit historical lookup, not permission to follow
-obsolete instructions.
+injected into model context. Warm search scans cached lexical sequences using the
+same tokenizer, phrase aliases, scoped corpus, term frequencies, scores and ties.
+It rereads and validates selected canonical records and reported reverse links.
+A pending review is excluded only when incorporated into the matched lesson
+revision. A correction does not replace the observed episode it corrects.
+Episode extensions are not lesson-schema requirements: retrieval uses a string
+`domain` and string members of list-valued `tags`, `aliases`, and `scope`. Other
+values remain intact as opaque metadata and do not become search terms. Scoped
+episode search also retains its title/body substring fallback. This extraction
+rule does not tighten accepted schema 1 or rewrite existing episodes; older
+catalogue lexical versions are rebuilt automatically.
+Every read still enumerates canonical file metadata. These operations grow with
+archive size; no constant-time or large-archive latency guarantee is claimed.
+Bootstrap reads the small map, profiles, and work headers without loading history.
+
+## Targeted reads and historical discovery
+
+`show ID` and `show L-ID --revision N` reread canonical Markdown. Output remains
+record text, suitable for `--output` or `--work`; diagnostics use stderr. There is
+no warning inserted into the record. `show L-ID` selects the latest accepted
+revision, never the head suggested by `current.md`. An explicit revision selects
+exactly that revision or fails. Neither command silently follows a replacement.
+
+A warm targeted read validates file size and UTF-8, schema, kind, ID, canonical
+path/metadata agreement, revision, and a normalized-content fingerprint. The
+fingerprint uses the same decoded/re-encoded representation as publication (BOM
+and line-ending normalization); accepted bytes are never rewritten by reading.
+Selected lessons also validate their complete local revision sequence, immutable
+identity, evidence retention, and immediate reference types and constraints.
+Referenced lessons have their local sequence checked; referenced evidence is
+read and structurally checked, without recursively auditing all its links.
+Thus a lesson with a long history or many references costs more than an isolated
+episode. Latest selected lessons must match their derived current view; a stale
+view fails with `reindex --repair` guidance. An older exact revision does not
+require a healthy current view. A selected invalid record fails the request; it
+is never silently skipped in favor of a lower-ranked hit.
+
+A successful targeted read says nothing about unrelated archive health. Full
+`check` audits duplicate IDs, all links, revision sequences, evidence retention,
+supersession cycles, current views, navigation, profiles, workspace references,
+and any existing catalogue against canonical data. A missing catalogue is normal
+after publication. Check reuses one verified snapshot for workspace/cache checks.
+Publication, record-related workspace mutations/checkpoints, installation,
+migration, and explicit `reindex` retain complete canonical validation.
+
+Use **`search --kind lessons --history TERMS`** to discover all accepted lesson
+revisions, including eligible latest revisions, retired/superseded lessons, and
+earlier wording absent from the latest revision. Default search continues to
+return only latest proposed/active/contested lessons, retaining their real status.
+Historical hits report `revision`, `status` at that revision, `latest_revision`,
+`latest_status`, `is_latest`, `discovery: historical-evidence`, and the exact
+immutable revision `path`. `supersedes`/`superseded_by` describe the matched
+revision; `latest_superseded_by` exposes the current replacement reference without
+following it. Older does not mean false: an observation can remain useful under
+its original conditions even when its former generalization is no longer advice.
+
+Both searches return at most `--limit` records (1–50, default 5), with `total`
+and `remaining` counts. Current search can be narrowed by query or scope. For
+history, repeat the same query, scope, work ID and limit with **`--offset N`** from
+`next_offset`. Offsets refer to the unchanged store/query; restart after a mutation.
+History uses the same lexical policy over the all-revision corpus, so its scores
+need not equal current-search scores. Ties sort by ID, then ascending revision.
+`--history --kind episodes`, negative offsets, and nonzero offsets without
+`--history` are rejected. Episodes remain separately labelled observations.
+Closed activities remain discoverable through `work list --status all/closed`
+and its existing query support; they are not part of accepted-memory search.
+
+### Disposable catalogue and recovery
+
+Private `state/memory/catalogue.sqlite3` is derived format 1, not accepted record
+schema 1. It stores canonical references, metadata, lexical sequences, normalized
+source fingerprints and reverse relationships. No body is served from it. It is
+root-bound and disposable; source installations deploy `mettle_catalogue.py`
+alongside the other helper modules. The private package remains git-ignored.
+
+Each targeted command compares an inventory of canonical relative paths, file
+sizes, modification/change timestamps, and device/inode identities. It also
+checks catalogue format, root, structural integrity and path coverage. Unchanged
+warm reads make no catalogue writes. Missing, structurally corrupt, incompatible,
+or inventory-stale catalogues rebuild under the existing store lock from a fully
+validated snapshot. A cold rebuild can therefore fail on unrelated broken
+canonical history; reading cached content is never a fallback. Navigation uses
+cached latest metadata and validates exposed lessons (one representative per
+domain on domain-list pages); previews remain bounded and non-authoritative.
+
+Publication removes the catalogue **before** writing accepted bytes. If accepted
+publication succeeds but view/cache maintenance is interrupted, the next read
+must rebuild or fail visibly; it cannot serve the previous cached head. Run the
+source/installed helper's **`reindex --repair --root ROOT`** to rebuild current
+views, bounded navigation and the catalogue, then `check`. Accepted records are
+validated, not repaired from the cache. Existing workspace publication retries
+remain supported. Do not remove a live lock to force repair.
+
+Metadata inventories detect ordinary out-of-band additions, edits, deletion,
+backup restoration and supported relocation. After any external archive
+maintenance, run explicit repair even if automatic change detection succeeds.
+Metadata is not arbitrary tamper detection: an edit preserving the observed
+metadata of an unselected file can affect completeness until repair. Returned
+canonical content is always rechecked. A logically edited/damaged cache may
+fail visibly with repair guidance; full check compares its content and links to
+canonical data. Do not edit the cache or use it to reconstruct accepted memory.
+Profiles, vocabulary, workspaces and accepted history survive rebuild unchanged.
+
+Upgrade the entire helper package. Older helpers ignore this cache but do not
+share its read contract or historical-search interface. Do not run old/new
+writers concurrently. After an older helper or backup has been used, reinstall
+0.4.0+ and run `reindex --repair` before relying on targeted reads. No accepted
+records need moving, republishing, or a new pilot-file migration.
 
 A score is a lexical ranking, not confidence, truth, or measured causal utility.
 No matches is valid. Bootstrap logs character counts, not fabricated token
