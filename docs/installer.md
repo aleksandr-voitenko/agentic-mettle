@@ -158,6 +158,42 @@ content outside the block, including authorized learned content, is preserved.
 
 ## Existing installations and recovery
 
+### Upgrading bounded navigation (0.3.1)
+
+A normal source installation rebuilds derived memory navigation and deploys the
+matching helper and references. Profiles, accepted IDs/paths/revisions, vocabulary,
+and history remain in place; accepted-record schema 1 and workspace format 2 do
+not change. No record migration or republishing is needed. `--configure-only`
+does not upgrade helper code, so use a normal source installation first.
+
+Old oversized generated indexes can exceed installation's existing input limit.
+In that case, run repair with the **new checkout's** helper before installing:
+
+```powershell
+& $Python -X utf8 .\mettle.py reindex --repair --root $Project
+& $Python -X utf8 .\mettle.py install --root $Project --non-interactive
+```
+
+```sh
+python3 -X utf8 mettle.py reindex --repair --root /path/to/project
+python3 -X utf8 mettle.py install --root /path/to/project --non-interactive
+```
+
+Use the designated root and selected interpreter. Stop other writers and retain
+your normal backup before repair. This path validates the full accepted graph and
+reconstructs derived navigation without reading oversized old index contents;
+canonical records and profiles keep their bytes. It does not repair invalid
+canonical memory or require a personality reset. Rerun `check` and bootstrap with
+the upgraded installed helper afterward. Old helpers lack `navigate`; old `check`
+expects the old indexes and old reindex can restore unbounded output. Do not mix
+helper versions against the upgraded installation.
+
+The installer and bootstrap share the startup budget calculation. Only the small
+root orientation/counts enter startup; domain/lesson lists are retrieved on demand.
+The existing adaptive budget for optional work pointers remains in effect.
+
+### Preserving configuration and profiles
+
 Omitting profile options keeps existing identity/dispositions files. Repeating
 identical explicit profile choices is a no-op. A different selected profile
 requires wizard approval or `--replace-profiles`; only selected profiles change.

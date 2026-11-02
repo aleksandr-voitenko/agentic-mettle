@@ -1,6 +1,6 @@
 # Activity workspaces, retrieval, and safe legacy migration
 
-Version **0.3.0**, experimental release. This adds working-state
+Version **0.3.1**, experimental release. This adds working-state
 management, not another personality, an autonomous scheduler, or a new accepted
 memory schema. Normal learning remains agent-owned within its existing mandate.
 
@@ -391,6 +391,13 @@ explicit fallback when those lessons do not fit. Episodes return their status as
 `observation-not-instruction`, their session, and correction links; read the full
 record and its corrections before using it. Workspaces, drafts, backups, evidence
 blobs, and old lesson revisions are not searched as current guidance.
+
+`navigate` lists memory domains; `navigate --domain DOMAIN` lists bounded lesson
+previews. Follow `next_command` for omitted entries and use `show ID` for full
+records. REFERENCE.md describes byte limits and source-assisted repair of old
+oversized indexes. Memory navigation is separate from `work list` and work ledgers.
+Publishing an episode/review/reconciliation leaves lesson navigation untouched;
+only lesson publication refreshes affected views. Full snapshot validation remains.
 
 Matching uses complete lexical tokens (preserving compound API identifiers),
 phrase-aware vocabulary aliases, and reduced weights for generic terms. An alias

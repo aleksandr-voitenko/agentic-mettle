@@ -617,16 +617,35 @@ def retrieve(api, store, query: list[str], limit: int, scope: str | None, kind: 
                 "score": round(score, 4), "path": path.relative_to(store.root).as_posix()}
         if kind == "lessons":
             item.update(revision=meta["revision"], status=meta["status"], scope=meta["scope"],
-                        path=(path.parent.parent / "current.md").relative_to(store.root).as_posix(),
-                        pending_counterevidence=[k for k, r in records.items() if r[0]["kind"] == "review"
-                            and r[0]["lesson"] == meta["id"] and r[0]["assessment"] == "counterexample"
-                            and k not in meta["counterevidence"]])
+                        path=(path.parent.parent / "current.md").relative_to(store.root).as_posix())
         else:
             item.update(status="observation-not-instruction", created_at=meta["created_at"],
-                        session=meta["session"], corrects=meta["corrects"],
-                        corrected_by=[k for k, r in records.items() if r[0]["kind"] == "episode" and meta["id"] in r[0]["corrects"]])
+                        session=meta["session"], corrects=meta["corrects"])
         results.append(item)
-    return sorted(results, key=lambda r: (-r["score"], r["id"]))[:limit]
+    selected = sorted(results, key=lambda r: (-r["score"], r["id"]))[:limit]
+    enrich_relationships(records, lessons, selected, kind)
+    return selected
+
+
+def enrich_relationships(records: dict, lessons: dict, selected: list[dict], kind: str) -> None:
+    """One archive pass for final IDs, preserving accepted-record iteration order."""
+    if not selected:
+        return
+    field = "pending_counterevidence" if kind == "lessons" else "corrected_by"
+    targets = {item["id"]: item for item in selected}
+    incorporated = {key: set(lessons[key][-1][0]["counterevidence"]) for key in targets} if kind == "lessons" else {}
+    for item in selected:
+        item[field] = []
+    for identifier, (meta, _, _) in records.items():
+        if kind == "lessons":
+            if meta["kind"] == "review" and meta["assessment"] == "counterexample":
+                target = meta["lesson"]
+                if target in targets and identifier not in incorporated[target]:
+                    targets[target][field].append(identifier)
+        elif meta["kind"] == "episode":
+            for target in meta["corrects"]:
+                if target in targets:
+                    targets[target][field].append(identifier)
 
 
 def reject_candidate(api, store, identifier: str, ref: str, query: list[str], reason: str) -> dict:

@@ -288,7 +288,13 @@ def finish_install(api, store, files: dict, configs: dict, *, runtimes: list[str
     if remember:
         proposed[store.path("installation.json")] = json.dumps({"schema": 1, "agents_position": agents_position,
                                                                "runtimes": list(dict.fromkeys(runtimes))}, indent=2) + "\n"
-    proposed.update(store.indexes(lessons))
+    memory_indexes = store.indexes(lessons)
+    for path in memory_indexes:
+        api.require(not path.is_file() or path.stat().st_size <= api.MAX_RECORD,
+                    f"Oversized derived memory index: {path}; use the new source helper's "
+                    "reindex --repair --root TARGET, then retry source installation. "
+                    "Canonical memory is still fully validated; no personality reset is needed")
+    proposed.update(memory_indexes)
     workspace_api = api.local_module("mettle_work")
     proposed[store.path("work/INDEX.md")] = workspace_api.index_text(api, store)
     for versions in lessons.values():

@@ -28,9 +28,11 @@ is not silently generalized to every runtime using the personality.
 
 ## 1. Navigate before loading detail
 
-The compact root memory map routes to domain indexes. Index entries retain exact
-component names, API symbols, diagnostic strings, and other useful search handles
-from the accepted lesson metadata. The agent can also search current lessons
+The compact root memory map routes through `navigate` to existing domain indexes.
+Each index is a bounded first page with a continuation command. Display previews
+explicitly identify shortened fields; accepted lesson metadata retains exact
+component names, API symbols, diagnostic strings, and other useful search handles.
+The agent can also search current lessons
 with the helper directly, then open a full record and supporting evidence only
 when necessary. These are complementary entry paths, not a demand to read every
 index before every search.

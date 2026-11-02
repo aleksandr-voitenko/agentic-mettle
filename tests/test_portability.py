@@ -422,7 +422,7 @@ class PortabilityTest(unittest.TestCase):
         candidate = m.search(self.store, ["café"], 5, None)[0]
         self.assertEqual(candidate["path"], ".agent-personality/state/memory/lessons/engineering/nested/L-test/current.md")
         index = self.store.path("memory/lessons/engineering/nested/INDEX.md").read_text(encoding="utf-8")
-        row = json.loads(next(line for line in index.splitlines() if line.startswith("{")))
+        row = json.loads(index.split("```json\n", 1)[1].split("```", 1)[0])["items"][0]
         self.assertEqual(row["path"], candidate["path"])
 
     def test_immutable_atomic_publication_and_no_unsafe_fallback(self):

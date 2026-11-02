@@ -151,16 +151,74 @@ Each predecessor update requires its own expected revision and a reconciliation
 that names that revision. A multi-lesson merge is **not** one atomic transaction;
 finish the recorded plan and run `check`. No automatic evidence inflation occurs.
 
+## Bounded memory navigation
+
+`memory/INDEX.md` stays a small orientation/continuation map, even with many
+domains. Append these commands to the executable/argument prefix in LOCATION.md:
+
+```text
+navigate
+navigate --offset 50 --limit 50
+navigate --domain engineering/generated-code
+```
+
+`navigate` lists domains and their existing `memory/lessons/DOMAIN/INDEX.md`
+paths. With `--domain`, it lists each lesson's latest accepted revision, including
+retired/superseded lessons with their actual status. This is navigation, not a
+change to search's default exclusion of those statuses. Domain indexes contain
+the first bounded page as fenced JSON. No continuation files or lookup catalogue
+are stored; `next_command` computes the next page from validated canonical records.
+
+Follow the returned `next_command` until null. `total`, `remaining`, and
+`next_offset` report coverage; an unknown valid domain or offset beyond the end
+returns an empty page. Offsets start at zero and limits are 1..100 (default 50).
+The UTF-8 byte budget can return fewer entries than the requested limit. Domains
+sort by name and lessons by accepted ID. Pagination is deterministic for an
+unchanged store; restart a traversal if another publication changes the listing.
+
+Generated domain files and command pages fit within 16,000 serialized UTF-8 bytes,
+including JSON escaping, headers, fences, and continuation information. Display
+previews retain at most 160 characters per string and three entries per list;
+`preview_truncated` explicitly names shortened title/scope/tag/alias fields.
+When a single row still exceeds the budget, optional display fields are omitted
+as needed (aliases, tags, scope, then title) and named in `preview_truncated`.
+IDs, revisions, statuses, and record paths stay exact. `show ID` supplies full
+metadata/body; `show ID --revision N` supplies retained history. Preview shortening
+does not change canonical records or the full text used for search.
+Generated commands use `--domain=DOMAIN` so valid leading-hyphen names such as
+`-legacy` remain usable as command arguments.
+
+The root map omits the listings and reports their counts and continuation route.
+Bootstrap loads this small map, required protocol/profiles, and budgeted optional
+work pointers; its separate 24,000-character budget is not a byte or token budget.
+Neither memory growth nor navigation previews require injecting all domains at
+startup. Required profiles and protocol are never trimmed to make them fit.
+
 ## Authority and recovery
 
 Accepted records and `lessons/DOMAIN/L-ID/revisions/NNNN.md` are authoritative.
 `current.md`, domain `INDEX.md` files, and the root memory index are derived views.
 The helper publishes a complete immutable file without replacing an existing
-one, then refreshes views. It serializes cooperating readers/writers through a
+one, then refreshes affected views. Episodes, reviews, and reconciliations do not
+regenerate lesson views/indexes. A lesson updates its own `current.md`, its domain
+preview, and root counts; byte-identical generated text is not rewritten.
+It serializes cooperating readers/writers through a
 store lock. If the process dies between publication and view refresh, inspection
 and `reindex --repair` rebuild views from accepted revisions. It does not discard
 evidence. A revision cannot change a lesson's ID, domain, or original creation
-time; its next number must be contiguous.
+time; its next number must be contiguous. `check` compares expected indexes with
+disk; missing indexes are reconstructed by `reindex`. `reindex --repair` also
+permits rebuilding stale current views, while retaining full canonical validation.
+Unknown files are not deleted or advertised as generated continuation pages.
+
+Older helpers do not implement `navigate` and expect the former index formatting
+in `check`; their reindex can recreate unbounded indexes. Upgrade the whole package
+from source before using the new navigation. If an old generated index already
+exceeds the old reader limit and blocks installation/bootstrap, run the **new source
+helper** with `reindex --repair --root TARGET`, then install normally from that
+source. See the source package's installer guide for shell examples. This replaces
+only reconstructible views/indexes, never moves or republishes accepted history,
+and does not relax canonical size, schema, link, lock, or path checks.
 
 On native Windows the initial supported storage target is local NTFS. Publication
 uses `os.link` to expose a complete file without replacing an accepted record;
@@ -192,7 +250,13 @@ Neither route searches workspaces, backups, or old lesson revisions as advice.
 Safety validation may read supporting records mechanically; they are not all
 injected into model context. Retrieval scans the local record collection rather
 than the millions of lines of project code; no large-archive performance guarantee
-is claimed. A future index can optimize this without changing record IDs.
+is claimed. Relationship enrichment makes one collection pass for the selected
+result IDs after ranking/limiting, retaining correction links and unresolved
+counterexamples. It no longer scans the archive separately for every match.
+Search, show, navigate, publication, check, installation, and full reindex still
+perform full snapshot validation; search also computes corpus term frequencies.
+This is not constant-time or targeted record access. Bootstrap reads the small map,
+profiles, and work headers without loading accepted history.
 `show --revision N` is an explicit historical lookup, not permission to follow
 obsolete instructions.
 
@@ -229,7 +293,7 @@ decision and its source evidence.
 
 Preserve exact technical terms in `title`, `tags`, and `aliases`, and explicit
 component/applicability boundaries in `scope` and the Trigger/Exceptions sections.
-Generated indexes already carry the relevant metadata; they are not independent
+Generated indexes carry explicitly bounded metadata previews; they are not independent
 sources of evidence. A procedure may include inputs, steps, stopping conditions,
 and verification within the existing Practice/Exceptions/Review plan sections.
 It remains a lesson, not a native skill registration or permission grant.
