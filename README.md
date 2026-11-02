@@ -10,7 +10,7 @@ help an agent develop through its history, not merely recall that history.
 > Can the agent make a better-informed decision because of an earlier experience,
 > recognize when its lesson does not apply, and revise it when evidence changes?
 
-**Version 0.3.0 — experimental release.** This repository provides an operating
+**Version 0.3.1 — experimental release.** This repository provides an operating
 protocol, a standard-library-only Python helper, runtime configuration adapters,
 record validation, and offline tests. It does not establish reliable reflective
 identity across hundreds of real conversations. Live runtime integration and
@@ -105,8 +105,17 @@ rather than Loom-specific storage. See the [workspace guide](docs/workspaces.md#
 
 Upgrade normally from this source, preserving profiles. Existing migrated 0.2.1
 installations need no additional migration or reset. The release version is
-**0.3.0**; accepted-record schema 1 and workspace format 2 are unchanged. Internal
+**0.3.1**; accepted-record schema 1 and workspace format 2 are unchanged. Internal
 format identifiers remain distinct from the removed product-stage label.
+
+Version 0.3.1 bounds memory navigation: the root map stays small and `navigate`
+lists domains, while `navigate --domain DOMAIN` lists lesson previews with exact
+continuation commands. Search ranking and learning semantics are unchanged.
+Relationship enrichment now takes one archive pass after result selection;
+publication writes only affected, changed lesson views. Full snapshot validation
+remains. See [navigation and compatibility](docs/records.md#bounded-memory-navigation),
+the [oversized-index upgrade route](docs/installer.md#upgrading-bounded-navigation-031),
+and [synthetic measurements](docs/scalability.md).
 
 ## Working state without package-root clutter
 
@@ -502,6 +511,8 @@ Lexical retrieval can miss paraphrases. Retrieval validates the local record
 graph and ranks the chosen record collection; it does not scan the source tree.
 The current ranker computes term frequencies across candidates without a cached
 search index, so large-memory performance must be measured before scaling.
+The [opt-in benchmark](docs/scalability.md) reports local command costs and operation
+counts, including the remaining full-archive validation work.
 There is no measured large-memory performance guarantee. Startup context has an
 explicit character budget and fails visibly rather than silently truncating a
 personality. Character counts are not token or billing measurements.

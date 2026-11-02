@@ -242,9 +242,14 @@ No automatic external-directory or broad tool permission is granted.
 
 ## Snapshot and failure semantics
 
-Only the fixed protocol, compact personality files, directory map, resolved root,
-and available runtime/model metadata enter a startup snapshot. Detailed lessons
-are retrieved on demand. Mutable text is clearly labelled as data; this labelling
+Only the fixed protocol, compact personality files, small memory orientation map,
+budgeted optional work pointers, resolved root, and available runtime/model
+metadata enter a startup snapshot. Domain growth does not add domain lists to
+startup: `navigate` and its continuation commands retrieve those on demand.
+The root map and domain entry paths remain available after source installation;
+see [the derived-index upgrade route](installer.md#upgrading-bounded-navigation-031)
+if old oversized indexes block adoption. Detailed lessons are retrieved on demand.
+Mutable text is clearly labelled as data; this labelling
 is not a prompt-injection security guarantee. Existing repository and higher
 priority instructions remain authoritative.
 
