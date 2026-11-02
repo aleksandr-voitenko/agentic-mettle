@@ -135,6 +135,89 @@ class BoundedMemoryTest(unittest.TestCase):
             self.assertNotEqual(self.cli("navigate", *args).returncode, 0, args)
         self.check()
 
+    def long_domain_records(self):
+        domain = "/".join(["d" * 200] * 18)
+        self.assertEqual(len(domain), 3617)
+        texts = [record("lesson", identifier, origin=["E-origin"], domain=domain,
+                        title="😀" * 160, scope=["😀" * 159 + c for c in "abc"],
+                        tags=["😀" * 159 + c for c in "def"],
+                        aliases=["😀" * 159 + c for c in "ghi"])
+                 for identifier in ("L-first", "L-second")]
+        return domain, texts
+
+    def test_long_domain_preview_adapts_without_changing_identity_or_records(self):
+        # Exercise serialization on every OS, even where PATH_MAX prevents
+        # creating this otherwise valid Linux-sized canonical path on disk.
+        self.publish("episode", "E-origin")
+        records, _ = self.store.snapshot()
+        domain, texts = self.long_domain_records()
+        lessons = {}
+        for text in texts:
+            meta, body = m.decode(text)
+            m.validate_record(meta, body)
+            path = self.store.state / "memory/lessons" / domain / meta["id"] / "revisions/0001.md"
+            lessons[meta["id"]] = [(meta, body, path)]
+        for versions in lessons.values():
+            self.store.validate_links(versions[0][0], records, lessons)
+        original = copy.deepcopy(lessons)
+        single = self.store.navigation({"L-first": lessons["L-first"]}, domain)
+        page = self.store.navigation(lessons, domain)
+        self.assertEqual(page["total"], 2)
+        self.assertEqual(page["remaining"], 1)
+        self.assertEqual(page["next_offset"], 1)
+        self.assertLessEqual(len((m.NAVIGATION_HEADER + m.navigation_json(page) + m.NAVIGATION_FOOTER).encode("utf-8")), m.NAVIGATION_BYTES)
+        # The same full preview fits alone, but cannot fit with continuation.
+        unshortened = {**page, "items": single["items"]}
+        self.assertGreater(len((m.NAVIGATION_HEADER + m.navigation_json(unshortened) + m.NAVIGATION_FOOTER).encode("utf-8")), m.NAVIGATION_BYTES)
+        item = page["items"][0]
+        for key in ("id", "revision", "status", "path"):
+            self.assertEqual(item[key], single["items"][0][key])
+        omitted = {key for key in ("title", "scope", "tags", "aliases") if key not in item}
+        self.assertTrue(omitted)
+        self.assertEqual(set(item["preview_truncated"]), omitted)
+        self.assertEqual([row["id"] for row in self.pages(lessons, domain)], ["L-first", "L-second"])
+        self.assertEqual(lessons, original)
+        self.assertEqual([m.encode(*versions[0][:2]) for versions in lessons.values()], texts)
+
+    @unittest.skipUnless(sys.platform == "linux", "Long-path filesystem regression runs on Linux; serialization is tested on every OS")
+    def test_long_domain_publication_check_and_repair_preserve_accepted_bytes(self):
+        self.publish("episode", "E-origin")
+        domain, texts = self.long_domain_records()
+        with self.store.lock():
+            paths = [self.root / self.store.publish(text, 0) for text in texts]
+        records, lessons = self.store.snapshot()
+        before = migration.protected(m, self.store)
+        index = self.store.path(f"memory/lessons/{domain}/INDEX.md")
+        self.assertLess(len(old_indexes(self.store, lessons)[index].encode("utf-8")), m.MAX_RECORD)
+        self.assertLessEqual(index.stat().st_size, m.NAVIGATION_BYTES)
+        page = json.loads(index.read_text(encoding="utf-8").split("```json\n")[1].split("```")[0])
+        continued = self.cli(*shlex.split(page["next_command"]))
+        self.assertEqual(continued.returncode, 0, continued.stderr)
+        self.assertEqual([r["id"] for r in json.loads(continued.stdout)["items"]], ["L-second"])
+        self.check()
+        index.unlink()
+        repaired = self.cli("reindex", "--repair")
+        self.assertEqual(repaired.returncode, 0, repaired.stderr)
+        self.check()
+        self.assertEqual(migration.protected(m, self.store), before)
+        self.assertEqual([p.read_bytes() for p in paths], [text.encode("utf-8") for text in texts])
+
+    def test_leading_hyphen_domain_continuation_runs_verbatim(self):
+        self.publish("episode", "E-origin")
+        for number in range(2):
+            self.publish("lesson", f"L-hyphen-{number}", domain="-legacy",
+                         origin=["E-origin"], scope=["fixture"])
+        result = self.cli("navigate", "--domain=-legacy", "--limit", "1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        first = json.loads(result.stdout)
+        continued = self.cli(*shlex.split(first["next_command"]))
+        self.assertEqual(continued.returncode, 0, continued.stderr)
+        second = json.loads(continued.stdout)
+        self.assertEqual([row["id"] for row in first["items"] + second["items"]],
+                         ["L-hyphen-0", "L-hyphen-1"])
+        self.assertIsNone(second["next_command"])
+        self.check()
+
     def test_missing_indexes_are_reconstructible_not_record_authority(self):
         _, lessons = seed(self.store, lessons=4, domains=2)
         before = migration.protected(m, self.store)

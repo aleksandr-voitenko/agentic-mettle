@@ -180,9 +180,13 @@ Generated domain files and command pages fit within 16,000 serialized UTF-8 byte
 including JSON escaping, headers, fences, and continuation information. Display
 previews retain at most 160 characters per string and three entries per list;
 `preview_truncated` explicitly names shortened title/scope/tag/alias fields.
+When a single row still exceeds the budget, optional display fields are omitted
+as needed (aliases, tags, scope, then title) and named in `preview_truncated`.
 IDs, revisions, statuses, and record paths stay exact. `show ID` supplies full
 metadata/body; `show ID --revision N` supplies retained history. Preview shortening
 does not change canonical records or the full text used for search.
+Generated commands use `--domain=DOMAIN` so valid leading-hyphen names such as
+`-legacy` remain usable as command arguments.
 
 The root map omits the listings and reports their counts and continuation route.
 Bootstrap loads this small map, required protocol/profiles, and budgeted optional

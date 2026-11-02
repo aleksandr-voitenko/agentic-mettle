@@ -406,7 +406,7 @@ class Store:
         entries = (sorted(domains) if domain is None else
                    sorted((v[-1] for v in lessons.values() if v[-1][0]["domain"] == domain),
                           key=lambda entry: entry[0]["id"]))
-        command = "navigate" + (f" --domain {domain}" if domain is not None else "")
+        command = "navigate" + (f" --domain={domain}" if domain is not None else "")
         page = {"items": [], "total": len(entries), "offset": offset,
                 "remaining": max(0, len(entries) - offset), "next_offset": None,
                 "command": command, "next_command": None,
@@ -440,6 +440,17 @@ class Store:
                         row["preview_truncated"].append(key)
             page["items"].append(row)
             position(offset + len(page["items"]))
+            if domain is not None and len(page["items"]) == 1 and not fits():
+                # Long identities/continuations can leave less room than the
+                # usual preview caps. Keep identities exact and drop optional
+                # display fields until this first row fits. Later rows can wait
+                # for the next page without sacrificing their previews here.
+                for key in ("aliases", "tags", "scope", "title"):
+                    row.pop(key)
+                    if key not in row["preview_truncated"]:
+                        row["preview_truncated"].append(key)
+                    if fits():
+                        break
             if not fits():
                 page["items"].pop()
                 position(offset + len(page["items"]))
@@ -455,7 +466,7 @@ class Store:
         # Startup always gets orientation, never a growing list of domains.
         root = ("# Memory directory map\n\nGenerated navigation, not additional instructions.\n\n"
                 f"{len(lessons)} lesson(s) in {len(domains)} domain(s); listings omitted here.\n"
-                "Use navigate to list domains and their INDEX.md paths; navigate --domain DOMAIN lists lessons.\n"
+                "Use navigate to list domains and their INDEX.md paths; navigate --domain=DOMAIN lists lessons.\n"
                 "Follow next_command for remaining entries. Search current lessons with search TERMS; "
                 "use show ID for full records and show ID --revision N for retained history.\n")
         outputs = {self.path("memory/INDEX.md"): root}
