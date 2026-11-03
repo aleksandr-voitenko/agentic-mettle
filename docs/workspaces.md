@@ -1,6 +1,6 @@
 # Activity workspaces, retrieval, and safe legacy migration
 
-Version **0.5.0**, experimental release. This adds working-state
+Version **0.5.1**, experimental release. This adds working-state
 management, not another personality, an autonomous scheduler, or a new accepted
 memory schema. Normal learning remains agent-owned within its existing mandate.
 

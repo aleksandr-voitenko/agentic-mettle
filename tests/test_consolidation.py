@@ -417,7 +417,7 @@ class ConsolidationTest(unittest.TestCase):
         # Compatibility fixture: the preceding protocol version and no new module
         # or guide. Actual 0.4.0 source upgrade is also exercised manually.
         protocol = self.store.home / 'PERSONALITY.md'
-        protocol.write_text(protocol.read_text(encoding='utf-8').replace('0.5.0', '0.4.0'), encoding='utf-8')
+        protocol.write_text(protocol.read_text(encoding='utf-8').replace(m.VERSION, '0.4.0'), encoding='utf-8')
         (self.store.home / 'tools/mettle_consolidate.py').unlink()
         (self.store.home / 'CONSOLIDATION_REFERENCE.md').unlink()
         (self.root / 'AGENTS.md').write_text('# Mandate\nOwned guidance: inspect scope (L-cache@1).\n', encoding='utf-8')
