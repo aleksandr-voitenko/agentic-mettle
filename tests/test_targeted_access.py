@@ -424,6 +424,15 @@ class TargetedAccessTest(unittest.TestCase):
         self.assertEqual(found, [f"L-hyphen-{i}" for i in range(3)])
         self.assertEqual((self.hashes(), self.cache.stat().st_mtime_ns), before)
 
+    def test_rebuild_does_not_require_access_to_system_temp(self):
+        before = self.hashes()
+        self.cache.unlink(missing_ok=True)
+        with mock.patch.object(tempfile, "tempdir", str(self.root / "unavailable-temp")):
+            self.assertEqual(self.get("E-00000")[0]["id"], "E-00000")
+        self.assertEqual(self.hashes(), before)
+        self.assertEqual(list(self.cache.parent.glob(".mettle-catalogue-*")), [])
+        self.assert_cli_ok("check")
+
     def test_cache_write_failure_keeps_accepted_state_recoverable(self):
         self.publish("episode", "E-accepted")
         original = m.write_atomic
@@ -436,6 +445,7 @@ class TargetedAccessTest(unittest.TestCase):
             with self.assertRaisesRegex(OSError, "synthetic"):
                 self.get("E-accepted")
         self.assertEqual(self.hashes(), before)
+        self.assertEqual(list(self.cache.parent.glob(".mettle-catalogue-*")), [])
         self.assert_cli_ok("reindex", "--repair")
         self.assertEqual(self.get("E-accepted")[0]["id"], "E-accepted")
 

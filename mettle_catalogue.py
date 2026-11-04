@@ -69,8 +69,11 @@ def rebuild(api, store, snapshot, before=None):
                 "Canonical inventory changed during validation; retry or run reindex --repair")
     metadata = {"format": FORMAT, "lexical": LEXICAL_VERSION, "root": str(store.root),
                 "inventory": fingerprint(before), "records": len(entries), "derived": True}
-    with tempfile.TemporaryDirectory(prefix="mettle-catalogue-") as temporary:
-        path = Path(temporary) / "catalogue.sqlite3"
+    target = store.path(RELATIVE)
+    with tempfile.NamedTemporaryFile(prefix=".mettle-catalogue-", suffix=".sqlite3",
+                                     dir=target.parent, delete=False) as temporary:
+        path = Path(temporary.name)
+    try:
         db = sqlite3.connect(path)
         try:
             db.executescript("""
@@ -100,9 +103,11 @@ def rebuild(api, store, snapshot, before=None):
         finally:
             db.close()
         api.require(inventory(api, store) == before, "Canonical inventory changed during catalogue rebuild; retry")
-        target, content = store.path(RELATIVE), path.read_bytes()
+        content = path.read_bytes()
         if not target.is_file() or target.read_bytes() != content:
             api.write_atomic(target, content)
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def connect(path):

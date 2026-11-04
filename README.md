@@ -10,7 +10,7 @@ help an agent develop through its history, not merely recall that history.
 > Can the agent make a better-informed decision because of an earlier experience,
 > recognize when its lesson does not apply, and revise it when evidence changes?
 
-**Version 0.5.0 — experimental release.** This repository provides an operating
+**Version 0.5.1 — experimental release.** This repository provides an operating
 protocol, a standard-library-only Python helper, runtime configuration adapters,
 record validation, and offline tests. It does not establish reliable reflective
 identity across hundreds of real conversations. Live runtime integration and
@@ -105,8 +105,13 @@ rather than Loom-specific storage. See the [workspace guide](docs/workspaces.md#
 
 Upgrade normally from this source, preserving profiles. Existing migrated 0.2.1
 installations need no additional migration or reset. The release version is
-**0.5.0**; accepted-record schema 1 and workspace format 2 are unchanged. Internal
+**0.5.1**; accepted-record schema 1 and workspace format 2 are unchanged. Internal
 format identifiers remain distinct from the removed product-stage label.
+
+Version 0.5.1 fixes catalogue rebuilding in restricted Windows runtimes where
+Python 3.13 temporary-directory permissions prevent SQLite from opening its
+staging database. Rebuilds now use a temporary file beside the catalogue,
+preserving atomic replacement and leaving accepted memory unchanged.
 
 Version 0.4.0 added targeted `show`, search, and navigation through a disposable
 local catalogue. Warm reads validate selected canonical records and relevant
